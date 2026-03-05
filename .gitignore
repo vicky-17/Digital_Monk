@@ -1,25 +1,16 @@
 # --- Android Studio & Gradle ---
 *.iml
 .gradle/
-/local.properties
 local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-/.idea/codeStyles
+.idea/
 .DS_Store
 Thumbs.db
-/build
+build/
 */build/
 gradle-app.setting
-/captures
-.externalNativeBuild
-.cxx
-*.iml
-*.class
+captures/
+.externalNativeBuild/
+.cxx/
 
 # --- Build Outputs (Don't upload these!) ---
 *.apk
@@ -37,11 +28,6 @@ out/
 *.keystore
 google-services.json
 app/google-services.json
-secrets.properties-e
-# Environment files
-*.env
-*.env.*
--e
-# Environment files
+secrets.properties
 *.env
 *.env.*
