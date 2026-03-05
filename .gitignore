@@ -1,0 +1,47 @@
+# --- Android Studio & Gradle ---
+*.iml
+.gradle/
+/local.properties
+local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/.idea/codeStyles
+.DS_Store
+Thumbs.db
+/build
+*/build/
+gradle-app.setting
+/captures
+.externalNativeBuild
+.cxx
+*.iml
+*.class
+
+# --- Build Outputs (Don't upload these!) ---
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+
+# --- Security (CRITICAL) ---
+# Never upload your signing keys or API secrets
+*.jks
+*.keystore
+google-services.json
+app/google-services.json
+secrets.properties-e
+# Environment files
+*.env
+*.env.*
+-e
+# Environment files
+*.env
+*.env.*
