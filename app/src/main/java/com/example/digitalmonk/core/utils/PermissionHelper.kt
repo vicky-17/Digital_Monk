@@ -6,6 +6,8 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService
 
 /**
@@ -53,5 +55,16 @@ object PermissionHelper {
             )
         }
         return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    fun hasNotificationPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Permissions are granted at install time on older Android versions
+        }
     }
 }

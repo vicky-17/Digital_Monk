@@ -32,10 +32,27 @@ import com.example.digitalmonk.ui.auth.PinGateScreen
 import com.example.digitalmonk.ui.auth.PinSetupActivity
 import com.example.digitalmonk.ui.components.common.SectionLabel
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
-import dagger.hilt.android.AndroidEntryPoint
+import android.Manifest
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.digitalmonk.core.utils.PermissionHelper
 
-@AndroidEntryPoint
+
+
+
+// TODO: Add @AndroidEntryPoint when Hilt is added to build.gradle.kts
 class MainActivity : BaseActivity() {
+
+    // Resister the permission launcher
+    private val requestNotificationsPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            // Permission granted, notifications will work
+        } else {
+            //Optional :show a message explaining why notifications are needed
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,14 +72,33 @@ class MainActivity : BaseActivity() {
         }
     }
 
+
+    private fun askForNotificationPermission(){
+        // Only required for android 13 (Tiramisu) and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!PermissionHelper.hasNotificationPermission(this)) {
+                requestNotificationsPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     @Composable
     fun AppContent(prefs: PrefsManager) {
         var isUnlocked by remember { mutableStateOf(false) }
 
+        // ✅ This listens for when isUnlocked becomes true, and safely launches the prompt
+        LaunchedEffect(isUnlocked) {
+            if (isUnlocked) {
+                askForNotificationPermission()
+            }
+        }
+
         if (isUnlocked) {
             Dashboard(prefs, onLock = { isUnlocked = false })
         } else {
-            PinGateScreen(prefs, onSuccess = { isUnlocked = true })
+            PinGateScreen(prefs, onSuccess = {
+                isUnlocked = true // Only update the state here
+            })
         }
     }
 
@@ -90,7 +126,12 @@ class MainActivity : BaseActivity() {
                 .fillMaxSize()
                 .background(Color(0xFF0F172A))
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp)
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = 20.dp,
+                    top = 50.dp // <-- Change this value to adjust the top spacing
+                )
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -274,3 +315,4 @@ class MainActivity : BaseActivity() {
         return false
     }
 }
+

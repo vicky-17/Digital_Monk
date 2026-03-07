@@ -18,6 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.digitalmonk.data.local.prefs.PrefsManager
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 
 @Composable
 fun PinGateScreen(prefs: PrefsManager, onSuccess: () -> Unit) {
@@ -43,7 +47,23 @@ fun PinGateScreen(prefs: PrefsManager, onSuccess: () -> Unit) {
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
             isError = error,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            //1. Tell the keyboard to show a "Done" button and use a Number pad
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.NumberPassword,
+                imeAction = ImeAction.Done
+            ),
+            // 2. Define what happens when the "Done/Enter" button is pressed
+            keyboardActions = KeyboardActions(
+                onDone={
+                    if (enteredPin == prefs.getPin()){
+                        onSuccess()
+                    } else {
+                        error = true
+                        enteredPin = ""
+                    }
+                }
+            )
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(

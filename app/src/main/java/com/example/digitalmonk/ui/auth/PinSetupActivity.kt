@@ -22,9 +22,8 @@ import com.example.digitalmonk.core.base.BaseActivity
 import com.example.digitalmonk.data.local.prefs.PrefsManager
 import com.example.digitalmonk.ui.dashboard.MainActivity
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
-import dagger.hilt.android.AndroidEntryPoint
 
-@AndroidEntryPoint
+// TODO: Add @AndroidEntryPoint when Hilt is added to build.gradle.kts
 class PinSetupActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {

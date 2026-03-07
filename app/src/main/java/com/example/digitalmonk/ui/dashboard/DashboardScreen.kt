@@ -7,3 +7,11 @@ import androidx.compose.runtime.Composable
 fun DashboardScreen() {
     Text("Dashboard")
 }
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+fun DashboardScreenPreview() {
+    com.example.digitalmonk.ui.theme.DigitalMonkTheme {
+        DashboardScreen()
+    }
+}

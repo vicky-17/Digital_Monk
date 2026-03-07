@@ -7,3 +7,4 @@ import androidx.compose.runtime.Composable
 fun ScreenTimeScreen() {
     Text("Screen time")
 }
+
