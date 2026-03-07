@@ -20,8 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -41,19 +43,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import android.app.Activity.RESULT_OK
 import com.example.digitalmonk.service.vpn.DnsVpnService
 
-
-
 // TODO: Add @AndroidEntryPoint when Hilt is added to build.gradle.kts
 class MainActivity : BaseActivity() {
 
-    // Resister the permission launcher
     private val requestNotificationsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
             // Permission granted, notifications will work
         } else {
-            //Optional :show a message explaining why notifications are needed
+            // Optional: show a message explaining why notifications are needed
         }
     }
 
@@ -75,9 +74,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
-
-    private fun askForNotificationPermission(){
-        // Only required for android 13 (Tiramisu) and above
+    private fun askForNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (!PermissionHelper.hasNotificationPermission(this)) {
                 requestNotificationsPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -89,7 +86,6 @@ class MainActivity : BaseActivity() {
     fun AppContent(prefs: PrefsManager) {
         var isUnlocked by remember { mutableStateOf(false) }
 
-        // ✅ This listens for when isUnlocked becomes true, and safely launches the prompt
         LaunchedEffect(isUnlocked) {
             if (isUnlocked) {
                 askForNotificationPermission()
@@ -100,7 +96,7 @@ class MainActivity : BaseActivity() {
             Dashboard(prefs, onLock = { isUnlocked = false })
         } else {
             PinGateScreen(prefs, onSuccess = {
-                isUnlocked = true // Only update the state here
+                isUnlocked = true
             })
         }
     }
@@ -112,21 +108,28 @@ class MainActivity : BaseActivity() {
         var refreshKey by remember { mutableLongStateOf(0L) }
         var safeSearchEnabled by remember { mutableStateOf(prefs.safeSearchEnabled) }
 
+        // Controls the Always-On VPN setup guide dialog.
+        // ONLY set to true by the "Lockdown VPN" button — never by the SafeSearch toggle.
+        var showAlwaysOnDialog by remember { mutableStateOf(false) }
 
-        // --- Launcher to ask for Android VPN Permission ---
+        // Launcher for Android's VPN consent dialog.
+        // Its only job: ask the OS for permission to use VPN.
+        // Starting the service after "Allow" is all it does — no dialog, no extra logic.
         val vpnPermissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
             if (result.resultCode == RESULT_OK) {
-                // User clicked "Allow" on the VPN popup! Start the service.
                 safeSearchEnabled = true
                 prefs.safeSearchEnabled = true
                 context.startService(Intent(context, DnsVpnService::class.java))
             } else {
-                // User clicked "Deny"
                 safeSearchEnabled = false
                 prefs.safeSearchEnabled = false
-                Toast.makeText(context, "VPN Permission is required for Web Filtering", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    "VPN Permission is required for Web Filtering",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -148,13 +151,9 @@ class MainActivity : BaseActivity() {
                 .fillMaxSize()
                 .background(Color(0xFF0F172A))
                 .verticalScroll(rememberScrollState())
-                .padding(
-                    start = 20.dp,
-                    end = 20.dp,
-                    bottom = 20.dp,
-                    top = 50.dp // <-- Change this value to adjust the top spacing
-                )
+                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 50.dp)
         ) {
+            // ── Header ────────────────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -176,6 +175,7 @@ class MainActivity : BaseActivity() {
 
             Spacer(modifier = Modifier.height(28.dp))
 
+            // ── Service Status ────────────────────────────────────────────────
             SectionLabel("Service Status")
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -200,6 +200,7 @@ class MainActivity : BaseActivity() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // ── Content Filters ───────────────────────────────────────────────
             SectionLabel("Content Filters")
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -216,7 +217,9 @@ class MainActivity : BaseActivity() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // --- SafeSearch VPN Toggle ---
+            // SafeSearch toggle: starts/stops the VPN service only.
+            // Asks Android for VPN permission if this is the first time.
+            // Does NOT show the Always-On dialog — that is a separate concern.
             ToggleCard(
                 title = "SafeSearch & Web Filter",
                 description = "Forces SafeSearch on Google/YouTube & blocks adult sites",
@@ -224,23 +227,19 @@ class MainActivity : BaseActivity() {
                 isEnabled = safeSearchEnabled,
                 onToggle = { isChecked ->
                     if (isChecked) {
-                        // Attempting to turn ON
                         val vpnIntent = VpnService.prepare(context)
                         if (vpnIntent != null) {
-                            // Android says we need to ask the user for permission first
+                            // First time — need OS permission
                             vpnPermissionLauncher.launch(vpnIntent)
                         } else {
-                            // We already have permission! Just start it.
+                            // Already have permission, just start the service
                             safeSearchEnabled = true
                             prefs.safeSearchEnabled = true
                             context.startService(Intent(context, DnsVpnService::class.java))
                         }
                     } else {
-                        // Turning OFF
                         safeSearchEnabled = false
                         prefs.safeSearchEnabled = false
-
-                        // Send a STOP command to the VpnService
                         val stopIntent = Intent(context, DnsVpnService::class.java).apply {
                             action = "STOP"
                         }
@@ -251,6 +250,7 @@ class MainActivity : BaseActivity() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // ── Security ──────────────────────────────────────────────────────
             SectionLabel("Security")
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -265,25 +265,19 @@ class MainActivity : BaseActivity() {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // --- NEW: Prevent Override / Lockdown Button ---
+            // Lockdown button: ONLY place showAlwaysOnDialog is set to true.
             ActionCard(
                 title = "Lockdown VPN (Prevent Bypass)",
-                description = "Tap here, click the ⚙️ next to Digital Monk, and turn on 'Always-on VPN' and 'Block connections without VPN'",
+                description = "Make the filter permanent so it can't be disabled by the child",
                 emoji = "🔒",
                 onClick = {
-                    try {
-                        // This opens the Android System VPN Settings page
-                        val intent = Intent("android.net.vpn.SETTINGS")
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Please open Settings and search for VPN", Toast.LENGTH_LONG).show()
-                    }
+                    showAlwaysOnDialog = true
                 }
             )
 
             Spacer(modifier = Modifier.height(40.dp))
 
+            // ── Accessibility warning banner ───────────────────────────────────
             if (!isAccessibilityOn) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A5F)),
@@ -303,10 +297,38 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
+
+        // Rendered OUTSIDE the Column so it floats on top correctly.
+        if (showAlwaysOnDialog) {
+            AlwaysOnVpnDialog(
+                onOpenSettings = {
+                    showAlwaysOnDialog = false
+                    try {
+                        val intent = Intent("android.net.vpn.SETTINGS")
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(
+                            context,
+                            "Go to Settings → Network → VPN",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                onDismiss = { showAlwaysOnDialog = false }
+            )
+        }
     }
 
+    // ── Reusable card composables ─────────────────────────────────────────────
+
     @Composable
-    fun StatusCard(title: String, description: String, isActive: Boolean, onClick: () -> Unit) {
+    fun StatusCard(
+        title: String,
+        description: String,
+        isActive: Boolean,
+        onClick: () -> Unit
+    ) {
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = if (isActive) Color(0xFF052E16) else Color(0xFF1C1917)
@@ -329,7 +351,13 @@ class MainActivity : BaseActivity() {
     }
 
     @Composable
-    fun ToggleCard(title: String, description: String, emoji: String, isEnabled: Boolean, onToggle: (Boolean) -> Unit) {
+    fun ToggleCard(
+        title: String,
+        description: String,
+        emoji: String,
+        isEnabled: Boolean,
+        onToggle: (Boolean) -> Unit
+    ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             shape = RoundedCornerShape(14.dp),
@@ -357,7 +385,12 @@ class MainActivity : BaseActivity() {
     }
 
     @Composable
-    fun ActionCard(title: String, description: String, emoji: String, onClick: () -> Unit) {
+    fun ActionCard(
+        title: String,
+        description: String,
+        emoji: String,
+        onClick: () -> Unit
+    ) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             shape = RoundedCornerShape(14.dp),
@@ -392,3 +425,82 @@ class MainActivity : BaseActivity() {
     }
 }
 
+// ── AlwaysOnVpnDialog — top-level composable (outside the class) ──────────────
+
+@Composable
+fun AlwaysOnVpnDialog(
+    onOpenSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("🛡️", fontSize = 48.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    "Make Filter Permanent",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    "Enable \"Always-On VPN\" so the filter stays active even after a restart and can't be bypassed.",
+                    fontSize = 14.sp,
+                    color = Color(0xFF94A3B8),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                val steps = listOf(
+                    "1️⃣" to "Tap 'Open VPN Settings' below",
+                    "2️⃣" to "Find 'Digital Monk Shield'",
+                    "3️⃣" to "Tap the ⚙️ gear icon next to it",
+                    "4️⃣" to "Enable 'Always-on VPN'",
+                    "5️⃣" to "Optional: Enable 'Block without VPN'"
+                )
+
+                steps.forEach { (emoji, text) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(emoji, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text, fontSize = 13.sp, color = Color(0xFFCBD5E1))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Open VPN Settings", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextButton(onClick = onDismiss) {
+                    Text("Maybe Later", color = Color(0xFF64748B), fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}

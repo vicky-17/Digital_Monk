@@ -8,21 +8,26 @@
     <!-- ── Foreground services ───────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- ── FIX: Required on Android 14+ for FOREGROUND_SERVICE_TYPE_SPECIAL_USE ── -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <!-- ── Notifications (Android 13+) ──────────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- ── Screen time / Usage stats ────────────────────────────────────── -->
-    <!-- Granted via Settings → Special App Access → Usage access (not runtime) -->
     <uses-permission
             android:name="android.permission.PACKAGE_USAGE_STATS"
             tools:ignore="ProtectedPermissions" />
 
     <!-- ── Overlay (block screen shown over other apps) ─────────────────── -->
-    <!-- Granted via Settings → Special App Access → Display over other apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
-    <!-- ── Phase 2: VPN / DNS filter ─────────────────────────────────────── -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- ── Internet (required for upstream DNS forwarding) ───────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- ── VPN ───────────────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"
+            tools:ignore="ProtectedPermissions" />
 
     <application
             android:name=".DigitalMonkApp"
@@ -64,20 +69,36 @@
                     android:resource="@xml/accessibility_config" />
         </service>
 
-        <!-- ── Phase 2: Overlay Service (uncomment when building) ────── -->
+        <!-- ── Overlay Service ────────────────────────────────────────── -->
         <service
-            android:name=".service.overlay.OverlayService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false" />
+                android:name=".service.overlay.OverlayService"
+                android:foregroundServiceType="specialUse"
+                android:exported="false">
+            <!-- Required on Android 14+ when using FOREGROUND_SERVICE_TYPE_SPECIAL_USE -->
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="overlay_for_parental_control" />
+        </service>
 
-        <!-- ── Phase 2: VPN Service (uncomment when building) ────────── -->
+        <!-- ── VPN Service ────────────────────────────────────────────── -->
+        <!--
+            FIX: Added android:foregroundServiceType="specialUse"
+            This MUST match the ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            passed to startForeground() in DnsVpnService.kt.
+            Without this, Android 14+ throws MissingForegroundServiceTypeException.
+        -->
         <service
-            android:name=".service.vpn.DnsVpnService"
-            android:permission="android.permission.BIND_VPN_SERVICE"
-            android:exported="true">
+                android:name=".service.vpn.DnsVpnService"
+                android:permission="android.permission.BIND_VPN_SERVICE"
+                android:foregroundServiceType="specialUse"
+                android:exported="false">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
+            <!-- Required on Android 14+ when using FOREGROUND_SERVICE_TYPE_SPECIAL_USE -->
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="dns_filter_for_parental_control" />
         </service>
 
         <!-- ── Receivers ──────────────────────────────────────────────── -->
@@ -92,10 +113,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- Phase 2: Detect app install/uninstall to refresh blocked app list -->
         <receiver
-            android:name=".receiver.PackageChangeReceiver"
-            android:exported="true">
+                android:name=".receiver.PackageChangeReceiver"
+                android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.PACKAGE_ADDED" />
                 <action android:name="android.intent.action.PACKAGE_REMOVED" />
