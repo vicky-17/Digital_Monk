@@ -9,10 +9,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.example.g4parentalmonitor" />
-                  <option name="mobileSdkAppId" value="1:384740109814:android:8abea39a7b1541870fabd7" />
-                  <option name="projectId" value="g4parentalmonitor-260c37e3" />
-                  <option name="projectNumber" value="384740109814" />
+                  <option name="appId" value="PLACEHOLDER" />
+                  <option name="mobileSdkAppId" value="" />
+                  <option name="projectId" value="" />
+                  <option name="projectNumber" value="" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
