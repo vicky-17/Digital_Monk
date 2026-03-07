@@ -1,22 +1,40 @@
 package com.example.digitalmonk.service.accessibility
 
 import android.accessibilityservice.AccessibilityService
-import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import com.example.digitalmonk.core.utils.Logger
 import com.example.digitalmonk.data.local.prefs.PrefsManager
-import com.example.digitalmonk.service.accessibility.detectors.ShortsDetector
+import com.example.digitalmonk.service.accessibility.handlers.AppBlockHandler
+import com.example.digitalmonk.service.accessibility.handlers.ShortsBlockHandler
 
 /**
- * Single AccessibilityService that handles all on-device enforcement.
+ * Digital Monk's single AccessibilityService.
+ *
+ * Designed as a dispatcher — it receives events and delegates to
+ * feature-specific handlers. Adding a new enforcement feature = add a
+ * new Handler class; this file stays untouched.
+ *
+ * Handlers are initialised lazily in [onServiceConnected] to guarantee
+ * that [Context] is available.
+ *
+ * ┌─ onAccessibilityEvent ─────────────────────────────────────────┐
+ * │   ShortsBlockHandler.handle()   ← Phase 1 (done)              │
+ * │   AppBlockHandler.handle()      ← Phase 2                      │
+ * │   ScreenTimeHandler.handle()    ← Phase 3                      │
+ * │   KeywordBlockHandler.handle()  ← Future                       │
+ * └────────────────────────────────────────────────────────────────┘
  */
 class GuardianAccessibilityService : AccessibilityService() {
 
     private lateinit var prefs: PrefsManager
-    private var lastBlockedPackage: String? = null
+    private lateinit var shortsBlockHandler: ShortsBlockHandler
+    private lateinit var appBlockHandler: AppBlockHandler
 
     override fun onServiceConnected() {
         prefs = PrefsManager(this)
-        Log.d(TAG, "Guardian service connected ✅")
+        shortsBlockHandler = ShortsBlockHandler(prefs, ::performGlobalAction)
+        appBlockHandler    = AppBlockHandler(prefs, ::performGlobalAction)
+        Logger.i(TAG, "Guardian service connected ✅")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -24,32 +42,19 @@ class GuardianAccessibilityService : AccessibilityService() {
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) return
 
-        val packageName = event.packageName?.toString() ?: return
-        if (packageName == applicationContext.packageName) return
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg == applicationContext.packageName) return   // never touch our own UI
 
-        handleShortsBlocking(packageName)
-    }
+        val root = rootInActiveWindow
 
-    private fun handleShortsBlocking(packageName: String) {
-        if (!prefs.blockShorts) return
-
-        val shouldBlock = ShortsDetector.shouldBlock(rootInActiveWindow, packageName)
-
-        if (shouldBlock) {
-            if (lastBlockedPackage != packageName) {
-                Log.d(TAG, "🚫 Blocking Shorts in: $packageName")
-                lastBlockedPackage = packageName
-            }
-            performGlobalAction(GLOBAL_ACTION_BACK)
-        } else {
-            if (lastBlockedPackage == packageName) {
-                lastBlockedPackage = null
-            }
-        }
+        // Dispatch to all handlers — each decides internally whether to act
+        shortsBlockHandler.handle(root, pkg)
+        appBlockHandler.handle(root, pkg)
+        // Add more handlers here as features are built
     }
 
     override fun onInterrupt() {
-        Log.d(TAG, "Service interrupted")
+        Logger.w(TAG, "Service interrupted")
     }
 
     companion object {
