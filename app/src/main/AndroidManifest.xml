@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Needed to check which app is in foreground via accessibility -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+            android:name=".DigitalMonkApp"
             android:allowBackup="false"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
@@ -12,9 +12,8 @@
             android:supportsRtl="true"
             android:theme="@style/Theme.DigitalMonk">
 
-        <!-- Entry point: Routes to PinSetup or MainActivity -->
         <activity
-                android:name=".ui.MainActivity"
+                android:name=".ui.dashboard.MainActivity"
                 android:exported="true"
                 android:label="@string/app_name">
             <intent-filter>
@@ -23,14 +22,12 @@
             </intent-filter>
         </activity>
 
-        <!-- First-time PIN setup -->
         <activity
-                android:name=".ui.PinSetupActivity"
+                android:name=".ui.auth.PinSetupActivity"
                 android:exported="false" />
 
-        <!-- THE core service: one service, does everything -->
         <service
-                android:name=".service.GuardianAccessibilityService"
+                android:name=".service.accessibility.GuardianAccessibilityService"
                 android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
                 android:exported="true">
             <intent-filter>
@@ -41,7 +38,6 @@
                     android:resource="@xml/accessibility_config" />
         </service>
 
-        <!-- Auto-start after reboot -->
         <receiver
                 android:name=".receiver.BootReceiver"
                 android:enabled="true"
