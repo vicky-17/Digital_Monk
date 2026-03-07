@@ -155,19 +155,6 @@ app/src/main/
 
 ---
 
-## 🔁 File Migration Map
-
-| **Old Path** | **New Path** | **Notes** |
-|---|---|---|
-| `utils/Constants.java` | `core/utils/Constants.kt` | Convert to Kotlin object |
-| `utils/ShortsDetector.kt` | `service/accessibility/detectors/ShortsDetector.kt` | Detector belongs with the service |
-| `data/model/AppRule.kt` | `data/model/AppRule.kt` | Same location, already correct |
-| `data/PrefsManager.kt` | `data/local/prefs/PrefsManager.kt` | Move deeper into local data |
-| `services/GuardianAccessibilityService.kt` | `service/accessibility/GuardianAccessibilityService.kt` | Rename folder: services → service |
-| `receivers/BootReceiver.kt` | `receiver/BootReceiver.kt` | Rename folder: receivers → receiver |
-| `ui/MainActivity.kt` | `ui/dashboard/MainActivity.kt` | Feature-based grouping |
-| `ui/PinSetupActivity.kt` | `ui/auth/PinSetupActivity.kt` | Feature-based grouping |
-| `ui/theme/*` | `ui/theme/*` | No change |
 
 ---
 
@@ -183,41 +170,6 @@ Data Layer (data/local/)  →  Room DB + SharedPrefs
 Service Layer (service/)  →  Accessibility, VPN, Overlay
     ↓ writes events
 ```
-
----
-
-## 📦 Recommended Dependencies to Add (build.gradle.kts)
-
-```kotlin
-// Hilt - Dependency Injection
-implementation("com.google.dagger:hilt-android:2.51")
-kapt("com.google.dagger:hilt-android-compiler:2.51")
-
-// Room - Local Database (for usage logs, app rules)
-implementation("androidx.room:room-runtime:2.6.1")
-implementation("androidx.room:room-ktx:2.6.1")
-kapt("androidx.room:room-compiler:2.6.1")
-
-// WorkManager - Background tasks that survive reboots
-implementation("androidx.work:work-runtime-ktx:2.9.0")
-implementation("androidx.hilt:hilt-work:1.2.0")
-
-// EncryptedSharedPreferences - Secure PIN/payment data storage
-implementation("androidx.security:security-crypto:1.1.0-alpha06")
-
-// Navigation Compose - For screen routing
-implementation("androidx.navigation:navigation-compose:2.7.7")
-
-// ViewModel Compose
-implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-
-// Coroutines
-implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
-
-// DataStore (modern replacement for SharedPreferences — use alongside Room)
-implementation("androidx.datastore:datastore-preferences:1.1.1")
-```
-
 ---
 
 ## 🗺️ Feature Roadmap → Package Mapping
@@ -235,46 +187,7 @@ implementation("androidx.datastore:datastore-preferences:1.1.1")
 | 🔜 Safe Search Enforcement | `service/vpn/DnsFilterEngine` | VpnService |
 | 🔜 Geofencing | `service/monitor/GeofenceManager` | Google Location Services |
 
----
 
-## ⚡ Immediate Action Steps
-
-### Step 1 — Rename folders in Android Studio
-- `services/` → `service/`
-- `receivers/` → `receiver/`
-- `utils/` → `core/utils/`
-
-### Step 2 — Move files (use Android Studio Refactor → Move)
-This auto-updates all import statements.
-
-### Step 3 — Convert Constants.java → Constants.kt
-```kotlin
-// core/utils/Constants.kt
-package com.example.digitalmonk.core.utils
-
-object Constants {
-    const val LOG_TAG = "DigitalMonk"
-    const val NOTIFICATION_ID = 1
-    const val NOTIFICATION_CHANNEL_ID = "guardian_channel"
-    const val OVERLAY_SERVICE_NOTIFICATION_ID = 2
-    const val VPN_SERVICE_NOTIFICATION_ID = 3
-}
-```
-
-### Step 4 — Move Composables out of MainActivity
-Extract `StatusCard`, `ToggleCard`, `ActionCard`, `SectionLabel` into `ui/components/`.
-
-### Step 5 — Add Application class
-```kotlin
-// DigitalMonkApp.kt
-@HiltAndroidApp
-class DigitalMonkApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        // Init logger, crash reporting, etc.
-    }
-}
-```
 
 ---
 
@@ -286,26 +199,3 @@ class DigitalMonkApp : Application() {
 - **Add `network_security_config.xml`** before any network feature
 
 ---
-
-## 📝 AndroidManifest.xml — Permissions to Add Over Time
-
-```xml
-<!-- Already have -->
-<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-<!-- Add for App Blocking + Screen Time -->
-<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions"/>
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-
-<!-- Add for Overlay (block screen) -->
-<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-<!-- Add for VPN/DNS Filter -->
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-
-<!-- Add for notifications -->
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-<!-- Add for screen time tracking -->
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-```
