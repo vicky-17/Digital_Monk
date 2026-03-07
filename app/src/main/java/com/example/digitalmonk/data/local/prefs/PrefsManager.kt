@@ -37,6 +37,10 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean(KEY_BLOCK_SHORTS, true)
         set(value) = prefs.edit().putBoolean(KEY_BLOCK_SHORTS, value).apply()
 
+    var safeSearchEnabled: Boolean
+        get() = prefs.getBoolean("safe_search_enabled", false)
+        set(value) = prefs.edit().putBoolean("safe_search_enabled", value).apply()
+
     var blockPorn: Boolean
         get() = prefs.getBoolean(KEY_BLOCK_PORN, false)
         set(value) = prefs.edit().putBoolean(KEY_BLOCK_PORN, value).apply()

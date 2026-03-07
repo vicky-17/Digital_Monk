@@ -36,7 +36,10 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.digitalmonk.core.utils.PermissionHelper
-
+import android.net.VpnService
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.app.Activity.RESULT_OK
+import com.example.digitalmonk.service.vpn.DnsVpnService
 
 
 
@@ -107,6 +110,25 @@ class MainActivity : BaseActivity() {
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
         var refreshKey by remember { mutableLongStateOf(0L) }
+        var safeSearchEnabled by remember { mutableStateOf(prefs.safeSearchEnabled) }
+
+
+        // --- Launcher to ask for Android VPN Permission ---
+        val vpnPermissionLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == RESULT_OK) {
+                // User clicked "Allow" on the VPN popup! Start the service.
+                safeSearchEnabled = true
+                prefs.safeSearchEnabled = true
+                context.startService(Intent(context, DnsVpnService::class.java))
+            } else {
+                // User clicked "Deny"
+                safeSearchEnabled = false
+                prefs.safeSearchEnabled = false
+                Toast.makeText(context, "VPN Permission is required for Web Filtering", Toast.LENGTH_LONG).show()
+            }
+        }
 
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
@@ -189,6 +211,41 @@ class MainActivity : BaseActivity() {
                 onToggle = {
                     blockShorts = it
                     prefs.blockShorts = it
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- SafeSearch VPN Toggle ---
+            ToggleCard(
+                title = "SafeSearch & Web Filter",
+                description = "Forces SafeSearch on Google/YouTube & blocks adult sites",
+                emoji = "🛡️",
+                isEnabled = safeSearchEnabled,
+                onToggle = { isChecked ->
+                    if (isChecked) {
+                        // Attempting to turn ON
+                        val vpnIntent = VpnService.prepare(context)
+                        if (vpnIntent != null) {
+                            // Android says we need to ask the user for permission first
+                            vpnPermissionLauncher.launch(vpnIntent)
+                        } else {
+                            // We already have permission! Just start it.
+                            safeSearchEnabled = true
+                            prefs.safeSearchEnabled = true
+                            context.startService(Intent(context, DnsVpnService::class.java))
+                        }
+                    } else {
+                        // Turning OFF
+                        safeSearchEnabled = false
+                        prefs.safeSearchEnabled = false
+
+                        // Send a STOP command to the VpnService
+                        val stopIntent = Intent(context, DnsVpnService::class.java).apply {
+                            action = "STOP"
+                        }
+                        context.startService(stopIntent)
+                    }
                 }
             )
 

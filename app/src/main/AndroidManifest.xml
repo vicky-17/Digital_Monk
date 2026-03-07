@@ -22,8 +22,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- ── Phase 2: VPN / DNS filter ─────────────────────────────────────── -->
-    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" /> -->
-    <!-- <uses-permission android:name="android.permission.BIND_VPN_SERVICE" /> -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE" tools:ignore="ProtectedPermissions" />
 
     <application
             android:name=".DigitalMonkApp"
@@ -66,15 +66,12 @@
         </service>
 
         <!-- ── Phase 2: Overlay Service (uncomment when building) ────── -->
-        <!--
         <service
             android:name=".service.overlay.OverlayService"
             android:foregroundServiceType="specialUse"
             android:exported="false" />
-        -->
 
         <!-- ── Phase 2: VPN Service (uncomment when building) ────────── -->
-        <!--
         <service
             android:name=".service.vpn.DnsVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
@@ -83,7 +80,6 @@
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
-        -->
 
         <!-- ── Receivers ──────────────────────────────────────────────── -->
 
@@ -98,7 +94,6 @@
         </receiver>
 
         <!-- Phase 2: Detect app install/uninstall to refresh blocked app list -->
-        <!--
         <receiver
             android:name=".receiver.PackageChangeReceiver"
             android:exported="true">
@@ -108,7 +103,6 @@
                 <data android:scheme="package" />
             </intent-filter>
         </receiver>
-        -->
 
     </application>
 
