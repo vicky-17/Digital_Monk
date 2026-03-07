@@ -61,10 +61,14 @@ class WatchdogService : android.app.Service() {
         }
 
         fun scheduleJobBackup(context: Context) {
-            // Schedule a periodic JobScheduler job as a backup restart mechanism.
-            // Even if the service is killed and can't restart itself, the job will fire
-            // and re-launch it.
             val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+
+            // FIX: Check if the job is already scheduled.
+            // This prevents Android from throwing the 250-calls/min rate limit exception.
+            if (jobScheduler.getPendingJob(WATCHDOG_JOB_ID) != null) {
+                return
+            }
+
             val jobInfo = JobInfo.Builder(
                 WATCHDOG_JOB_ID,
                 ComponentName(context, WatchdogJobService::class.java)
