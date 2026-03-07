@@ -2,32 +2,37 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
         xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ── Boot ──────────────────────────────────────────────────────────── -->
+    <!-- ── Network ───────────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- ── Boot (declared ONCE) ──────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- ── Foreground services ───────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-
-    <!-- ── FIX: Required on Android 14+ for FOREGROUND_SERVICE_TYPE_SPECIAL_USE ── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- ── Notifications (Android 13+) ──────────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ── Screen time / Usage stats ────────────────────────────────────── -->
+    <!-- ── Special access (granted via system settings) ─────────────────── -->
     <uses-permission
             android:name="android.permission.PACKAGE_USAGE_STATS"
             tools:ignore="ProtectedPermissions" />
-
-    <!-- ── Overlay (block screen shown over other apps) ─────────────────── -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-    <!-- ── Internet (required for upstream DNS forwarding) ───────────────── -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- ── VPN ───────────────────────────────────────────────────────────── -->
-    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"
+    <uses-permission
+            android:name="android.permission.BIND_VPN_SERVICE"
             tools:ignore="ProtectedPermissions" />
+
+    <!-- ── Persistence / keep-alive ─────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- ── App inspection ───────────────────────────────────────────────── -->
+    <uses-permission
+            android:name="android.permission.QUERY_ALL_PACKAGES"
+            tools:ignore="QueryAllPackagesPermission" />
 
     <application
             android:name=".DigitalMonkApp"
@@ -55,6 +60,10 @@
                 android:name=".ui.auth.PinSetupActivity"
                 android:exported="false" />
 
+        <activity
+                android:name=".ui.onboarding.PermissionSetupActivity"
+                android:exported="false" />
+
         <!-- ── Accessibility Service ──────────────────────────────────── -->
 
         <service
@@ -69,24 +78,33 @@
                     android:resource="@xml/accessibility_config" />
         </service>
 
-        <!-- ── Overlay Service ────────────────────────────────────────── -->
+        <!-- ── Watchdog Service ───────────────────────────────────────── -->
+        <!--
+            stopWithTask="false": service keeps running even after the user
+            swipes the app from recents.
+        -->
         <service
-                android:name=".service.overlay.OverlayService"
+                android:name=".service.WatchdogService"
                 android:foregroundServiceType="specialUse"
-                android:exported="false">
-            <!-- Required on Android 14+ when using FOREGROUND_SERVICE_TYPE_SPECIAL_USE -->
+                android:exported="false"
+                android:stopWithTask="false">
             <property
                     android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                    android:value="overlay_for_parental_control" />
+                    android:value="parental_control_guardian" />
         </service>
 
-        <!-- ── VPN Service ────────────────────────────────────────────── -->
+        <!-- ── Watchdog Job Service (JobScheduler backup) ────────────── -->
         <!--
-            FIX: Added android:foregroundServiceType="specialUse"
-            This MUST match the ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            passed to startForeground() in DnsVpnService.kt.
-            Without this, Android 14+ throws MissingForegroundServiceTypeException.
+            exported="true" + BIND_JOB_SERVICE: required so the system
+            scheduler can bind to it. The permission ensures only the OS can.
         -->
+        <service
+                android:name=".service.WatchdogJobService"
+                android:permission="android.permission.BIND_JOB_SERVICE"
+                android:exported="true" />
+
+        <!-- ── VPN Service ────────────────────────────────────────────── -->
+
         <service
                 android:name=".service.vpn.DnsVpnService"
                 android:permission="android.permission.BIND_VPN_SERVICE"
@@ -95,23 +113,55 @@
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
-            <!-- Required on Android 14+ when using FOREGROUND_SERVICE_TYPE_SPECIAL_USE -->
             <property
                     android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                     android:value="dns_filter_for_parental_control" />
         </service>
 
-        <!-- ── Receivers ──────────────────────────────────────────────── -->
+        <!-- ── Overlay Service ────────────────────────────────────────── -->
 
+        <service
+                android:name=".service.overlay.OverlayService"
+                android:foregroundServiceType="specialUse"
+                android:exported="false">
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="overlay_for_parental_control" />
+        </service>
+
+        <!-- ── Device Admin (anti-uninstall) ─────────────────────────── -->
+
+        <receiver
+                android:name=".receiver.MonkDeviceAdminReceiver"
+                android:exported="true"
+                android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                    android:name="android.app.device_admin"
+                    android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── Boot Receiver ─────────────────────────────────────────── -->
+        <!--
+            directBootAware="true": fires even before the user unlocks after reboot.
+            priority="1000": fires before other apps' boot receivers.
+        -->
         <receiver
                 android:name=".receiver.BootReceiver"
                 android:enabled="true"
-                android:exported="true">
-            <intent-filter>
+                android:exported="true"
+                android:directBootAware="true">
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!-- ── Package Change Receiver ───────────────────────────────── -->
 
         <receiver
                 android:name=".receiver.PackageChangeReceiver"

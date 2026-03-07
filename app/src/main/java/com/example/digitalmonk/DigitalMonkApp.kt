@@ -2,24 +2,32 @@ package com.example.digitalmonk
 
 import android.app.Application
 import com.example.digitalmonk.core.utils.Logger
+import com.example.digitalmonk.data.local.prefs.PrefsManager
+import com.example.digitalmonk.service.WatchdogService
 import com.example.digitalmonk.service.notification.NotificationChannels
 
 /**
- * Application class — the single entry point before any Activity/Service.
+ * Application entry point.
  *
  * Responsibilities:
- *  - Register notification channels (must happen before any notification is posted)
- *  - Initialise crash reporting (add Crashlytics here when ready)
- *  - Hilt injection entry point (add @HiltAndroidApp when Hilt is added)
- *
- * Add @HiltAndroidApp annotation when you add Hilt dependency.
+ *  1. Create notification channels (must happen before any notification is posted)
+ *  2. Start WatchdogService if the app is already set up
+ *  3. Schedule the JobScheduler backup
  */
-// @HiltAndroidApp   ← uncomment after adding Hilt
 class DigitalMonkApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
         Logger.i("DigitalMonkApp", "App starting…")
+
         NotificationChannels.createAll(this)
+
+        val prefs = PrefsManager(this)
+        if (prefs.hasPin()) {
+            // App is set up — start the watchdog immediately.
+            // The watchdog will also restart the VPN if it was active.
+            WatchdogService.start(this)
+            WatchdogService.scheduleJobBackup(this)
+        }
     }
 }

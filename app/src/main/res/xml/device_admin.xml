@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-policies>
+        <!-- Required for dpm.lockNow() — lock screen on security breach -->
         <force-lock />
+
+        <!-- Allows enforcing password quality and screen lock timeout -->
+        <limit-password />
+
+        <!-- Allows wiping app data if needed -->
+        <wipe-data />
+
+        <!-- Allows setting screen lock timeout -->
+        <expire-password />
     </uses-policies>
 </device-admin>

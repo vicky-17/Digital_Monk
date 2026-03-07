@@ -20,10 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.digitalmonk.core.base.BaseActivity
 import com.example.digitalmonk.data.local.prefs.PrefsManager
-import com.example.digitalmonk.ui.dashboard.MainActivity
+import com.example.digitalmonk.ui.onboarding.PermissionSetupActivity
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
 
-// TODO: Add @AndroidEntryPoint when Hilt is added to build.gradle.kts
 class PinSetupActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,18 +49,11 @@ class PinSetupActivity : BaseActivity() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                "🔒 Set Parent PIN",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+            Text("🔒 Set Parent PIN", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 "This PIN protects the parental settings.\nKeep it secret from children.",
-                fontSize = 14.sp,
-                color = Color(0xFF94A3B8),
-                textAlign = TextAlign.Center
+                fontSize = 14.sp, color = Color(0xFF94A3B8), textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(40.dp))
@@ -116,17 +108,16 @@ class PinSetupActivity : BaseActivity() {
                             prefs.savePin(pin)
                             prefs.isSetupComplete = true
                             Toast.makeText(applicationContext, "PIN saved ✅", Toast.LENGTH_SHORT).show()
-                            startActivity(Intent(this@PinSetupActivity, MainActivity::class.java))
+                            // ← Go to permission setup instead of going straight to dashboard
+                            startActivity(Intent(this@PinSetupActivity, PermissionSetupActivity::class.java))
                             finish()
                         }
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
             ) {
-                Text("Save PIN & Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Save PIN & Continue →", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
