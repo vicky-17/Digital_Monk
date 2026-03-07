@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "G4ParentalMonitor"
+rootProject.name = "Digital Monk"
 include(":app")
