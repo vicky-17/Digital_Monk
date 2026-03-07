@@ -263,6 +263,25 @@ class MainActivity : BaseActivity() {
                 }
             )
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- NEW: Prevent Override / Lockdown Button ---
+            ActionCard(
+                title = "Lockdown VPN (Prevent Bypass)",
+                description = "Tap here, click the ⚙️ next to Digital Monk, and turn on 'Always-on VPN' and 'Block connections without VPN'",
+                emoji = "🔒",
+                onClick = {
+                    try {
+                        // This opens the Android System VPN Settings page
+                        val intent = Intent("android.net.vpn.SETTINGS")
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Please open Settings and search for VPN", Toast.LENGTH_LONG).show()
+                    }
+                }
+            )
+
             Spacer(modifier = Modifier.height(40.dp))
 
             if (!isAccessibilityOn) {

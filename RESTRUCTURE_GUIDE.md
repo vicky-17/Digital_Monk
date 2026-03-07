@@ -199,3 +199,36 @@ Service Layer (service/)  →  Accessibility, VPN, Overlay
 - **Add `network_security_config.xml`** before any network feature
 
 ---
+## Open source Projects
+The following are open source projects used in order to deliver our products and
+
+services:
+
+○ https://github.com/InflationX/Calligraphy
+
+○ https://github.com/square/okhttp
+
+○ https://github.com/greenrobot/EventBus
+
+○ https://github.com/javiersantos/MaterialStyledDialogs
+
+○ https://github.com/square/leakcanary
+
+○ https://github.com/rrice/java-string-similarity
+
+○ https://github.com/akexorcist/RoundCornerProgressBar
+
+○ https://github.com/duckduckgo/Android
+
+○ https://github.com/duckduckgo/iOS
+
+○ https://github.com/Jigsaw-Code/Intra
+
+○ https://github.com/DNSCrypt/dnscrypt-proxy
+
+○ https://github.com/tjfontaine/node-dns
+
+○ https://github.com/PowerDNS/pdns
+
+
+---
