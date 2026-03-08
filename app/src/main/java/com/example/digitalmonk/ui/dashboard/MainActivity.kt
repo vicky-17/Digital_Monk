@@ -93,10 +93,7 @@ data class PermissionsState(
 )
 
 
-
 class MainActivity : BaseActivity() {
-
-
 
     private val requestNotificationsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -119,10 +116,9 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    // 2. Create the unified check function inside MainActivity
     private fun getPermissionsState(context: android.content.Context): PermissionsState {
         return PermissionsState(
-            isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context), // Uses PermissionHelper
+            isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context),
             isBatteryExempt = PersistenceManager.isBatteryOptimizationDisabled(context),
             canDrawOverlays = PersistenceManager.canDrawOverlays(context),
             isDeviceAdmin = MonkDeviceAdminReceiver.isAdminActive(context),
@@ -174,13 +170,16 @@ class MainActivity : BaseActivity() {
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
 
-        // 1. Centralized refresh key
+        // ── Single source of truth for refresh ───────────────────────────────
         var refreshKey by remember { mutableLongStateOf(0L) }
 
-        // 2. DECLARE IT AS A VAR BEFORE THE LAUNCHED EFFECT
+        // ── Permission state declared as var so LaunchedEffect can update it ─
         var permissionsState by remember { mutableStateOf(getPermissionsState(context)) }
 
-        // 3. Now the effect can successfully update the variable
+        // ── Polling effect — re-runs every time refreshKey changes (ON_RESUME) ─
+        // Checks 3 times with 500ms gaps to defeat Android's PowerManager
+        // cache delay that causes isBatteryOptimizationDisabled() to return a
+        // stale false value immediately after the user taps "Allow".
         LaunchedEffect(refreshKey) {
             permissionsState = getPermissionsState(context)
             kotlinx.coroutines.delay(500)
@@ -189,6 +188,7 @@ class MainActivity : BaseActivity() {
             permissionsState = getPermissionsState(context)
         }
 
+        // ── Lifecycle observer — bumps refreshKey on every ON_RESUME ─────────
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
@@ -202,7 +202,6 @@ class MainActivity : BaseActivity() {
             animationSpec = tween(300),
             label = "scrim"
         )
-
 
         Box(modifier = Modifier.fillMaxSize().background(BgDeep)) {
             // ── Main content ─────────────────────────────────────────────────
@@ -233,7 +232,6 @@ class MainActivity : BaseActivity() {
                 enter = slideInHorizontally(initialOffsetX = { -it }),
                 exit = slideOutHorizontally(targetOffsetX = { -it })
             ) {
-                // Pass the state down
                 PermissionsSidebar(
                     permissionsState = permissionsState,
                     onRefresh = { refreshKey = System.currentTimeMillis() },
@@ -249,26 +247,25 @@ class MainActivity : BaseActivity() {
 
     @Composable
     fun PermissionsSidebar(
-        permissionsState: PermissionsState, // <-- ADDED
-        onRefresh: () -> Unit,              // <-- ADDED
+        permissionsState: PermissionsState,
+        onRefresh: () -> Unit,
         onClose: () -> Unit
     ) {
         val context = LocalContext.current
 
-        // NO MORE Lifecycle Observer here! The parent handles it.
+        // No lifecycle observer here — the parent Dashboard owns the refresh cycle.
 
         val deviceAdminLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
-        ) { onRefresh() } // <-- CALL PARENT REFRESH
+        ) { onRefresh() }
 
         val batteryLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) {
-            // FIXED BUG: Removed the SharedPreferences hack! Just refresh.
+            // Do NOT use SharedPreferences flags — just trigger the polling refresh.
             onRefresh()
         }
 
-        // Use the passed-down state
         val grantedCount = listOf(
             permissionsState.isAccessibilityOn,
             permissionsState.isBatteryExempt,
@@ -277,7 +274,7 @@ class MainActivity : BaseActivity() {
             permissionsState.hasUsageStats,
             permissionsState.hasNotification
         ).count { it }
-        val totalCount   = 6
+        val totalCount = 6
 
         Box(
             modifier = Modifier
@@ -327,7 +324,6 @@ class MainActivity : BaseActivity() {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                // Shield icon made from Canvas
                                 Box(
                                     modifier = Modifier
                                         .size(40.dp)
@@ -564,11 +560,6 @@ class MainActivity : BaseActivity() {
             isCritical -> AccentRed
             else       -> AccentAmber
         }
-        val chipText = when {
-            isGranted  -> "Granted"
-            isCritical -> "Required"
-            else       -> "Optional"
-        }
 
         Row(
             modifier = Modifier
@@ -578,7 +569,6 @@ class MainActivity : BaseActivity() {
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Emoji in circle
             Box(
                 modifier = Modifier
                     .size(38.dp)
@@ -612,7 +602,6 @@ class MainActivity : BaseActivity() {
             Spacer(Modifier.width(8.dp))
 
             if (isGranted) {
-                // Green checkmark badge
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -623,7 +612,6 @@ class MainActivity : BaseActivity() {
                     Text("✓", fontSize = 12.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
                 }
             } else {
-                // Fix button
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
@@ -648,16 +636,19 @@ class MainActivity : BaseActivity() {
     @Composable
     fun DashboardContent(
         prefs: PrefsManager,
-        permissionsState: PermissionsState, // <-- ADDED
-        onRefresh: () -> Unit,              // <-- ADDED
+        permissionsState: PermissionsState,
+        onRefresh: () -> Unit,
         onLock: () -> Unit,
         onMenuClick: () -> Unit
     ) {
         val context = LocalContext.current
-        val lifecycleOwner = LocalLifecycleOwner.current
-        var refreshKey by remember { mutableLongStateOf(0L) }
         var safeSearchEnabled by remember { mutableStateOf(prefs.safeSearchEnabled) }
         var showAlwaysOnDialog by remember { mutableStateOf(false) }
+
+        // NOTE: No local refreshKey or lifecycleOwner here.
+        // Permission state is owned by Dashboard and passed down via permissionsState.
+        // The batteryOptLauncher below just calls onRefresh() to trigger the parent's
+        // polling LaunchedEffect — it does NOT read permission state directly.
 
         val vpnPermissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
@@ -675,19 +666,15 @@ class MainActivity : BaseActivity() {
 
         val batteryOptLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
-        ) { onRefresh() } // <-- CALL PARENT REFRESH
+        ) { onRefresh() }
 
         var blockShorts by remember { mutableStateOf(prefs.blockShorts) }
 
-        // Use the passed-down state for missing critical permissions
         val missingCritical = listOf(
             permissionsState.isAccessibilityOn,
             permissionsState.isBatteryExempt,
             permissionsState.canDrawOverlays
         ).count { !it }
-
-
-
 
         Column(
             modifier = Modifier
@@ -704,12 +691,9 @@ class MainActivity : BaseActivity() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Hamburger menu button
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(BgCard)
                         .clickable(onClick = onMenuClick),
                     contentAlignment = Alignment.Center
                 ) {
@@ -720,45 +704,16 @@ class MainActivity : BaseActivity() {
                         repeat(3) {
                             Box(
                                 modifier = Modifier
-                                    .width(18.dp)
+                                    .width(22.dp)
                                     .height(2.dp)
                                     .clip(RoundedCornerShape(1.dp))
                                     .background(TextPrimary)
                             )
                         }
-                        // Red dot badge when permissions are missing
-                        if (missingCritical > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(AccentRed)
-                                    .align(Alignment.End)
-                            )
-                        }
                     }
-                    // Badge overlay
-                    if (missingCritical > 0) {
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape)
-                                .background(AccentRed)
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-4).dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                missingCritical.toString(),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
+
                 }
 
-                // Title
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "Digital Monk",
@@ -774,7 +729,6 @@ class MainActivity : BaseActivity() {
                     )
                 }
 
-                // Lock button
                 Box(
                     modifier = Modifier
                         .size(44.dp)
@@ -789,7 +743,7 @@ class MainActivity : BaseActivity() {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Permission alert banner (if critical ones missing) ────────────
+            // ── Permission alert banner ───────────────────────────────────────
             AnimatedVisibility(
                 visible = missingCritical > 0,
                 enter = fadeIn(tween(400)),
@@ -855,6 +809,12 @@ class MainActivity : BaseActivity() {
                 else "Active — App may be killed by OEM. Tap to fix",
                 isActive = permissionsState.isBatteryExempt,
                 onClick = {
+                    // Guard: do nothing if already exempt.
+                    // Without this guard, tapping the green card would call onRefresh()
+                    // via batteryOptLauncher, which triggers the polling LaunchedEffect.
+                    // The first poll at t=0ms reads a stale false from the PowerManager
+                    // cache, causing the card to flicker red before the 500ms checks
+                    // correct it — even though the permission was never changed.
                     if (!permissionsState.isBatteryExempt) {
                         batteryOptLauncher.launch(PersistenceManager.buildBatteryOptimizationIntent(context))
                     }
@@ -909,7 +869,11 @@ class MainActivity : BaseActivity() {
                     } else {
                         safeSearchEnabled = false
                         prefs.safeSearchEnabled = false
-                        val stopIntent = Intent(context, DnsVpnService::class.java).apply { action = "STOP" }
+                        // Must match DnsVpnService.ACTION_STOP exactly — the service
+                        // ignores any intent whose action doesn't equal "ACTION_STOP".
+                        val stopIntent = Intent(context, DnsVpnService::class.java).apply {
+                            action = DnsVpnService.ACTION_STOP
+                        }
                         context.startService(stopIntent)
                     }
                 }
@@ -970,7 +934,11 @@ class MainActivity : BaseActivity() {
                 containerColor = if (isActive) Color(0xFF052E16) else BgCard
             ),
             shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            // Only register clicks when NOT active. An already-green card must never
+            // trigger onClick — doing so would fire onRefresh() → LaunchedEffect →
+            // first poll reads stale false from PowerManager cache → card flickers red.
+            modifier = if (!isActive) Modifier.fillMaxWidth().clickable(onClick = onClick)
+            else Modifier.fillMaxWidth()
         ) {
             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (isActive) "🟢" else "🔴", fontSize = 22.sp)

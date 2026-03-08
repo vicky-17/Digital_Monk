@@ -56,20 +56,18 @@ class PermissionSetupActivity : BaseActivity() {
 fun PermissionSetupContent(onComplete: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // ── Refresh key — bumped on every ON_RESUME ──────────────────────────────
     var refreshKey by remember { mutableLongStateOf(0L) }
 
     // SharedPrefs for tracking OEM screens the user has visited
     // (We can't programmatically detect if MIUI autostart is ON, so we track "visited")
     val prefs = remember { context.getSharedPreferences("monk_prefs", Context.MODE_PRIVATE) }
 
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
+    // ── Permission state — declared as mutable vars so LaunchedEffect can update them ──
+    // IMPORTANT: These must be `var`, not `val`, and must NOT use `remember(refreshKey)`
+    // because that would reset them to a fresh query each recomposition rather than
+    // letting the polling loop update them incrementally.
     var isAccessibilityOn by remember { mutableStateOf(PermissionHelper.isAccessibilityEnabled(context)) }
     var isBatteryExempt   by remember { mutableStateOf(PersistenceManager.isBatteryOptimizationDisabled(context)) }
     var canDrawOverlays   by remember { mutableStateOf(PersistenceManager.canDrawOverlays(context)) }
@@ -78,9 +76,13 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
     var hasOemAutostart   by remember { mutableStateOf(PersistenceManager.hasOemAutostartSetting(context)) }
     val isXiaomi          = PersistenceManager.detectOem() == PersistenceManager.OemType.XIAOMI
 
-    // NEW: Poll the system when returning to this screen
+    // ── Polling effect ───────────────────────────────────────────────────────
+    // Triggered every time refreshKey changes (i.e. on every ON_RESUME).
+    // We check three times with 500ms gaps to defeat Android's PowerManager
+    // caching delay (~200–500ms) that causes isBatteryOptimizationDisabled()
+    // to return a stale false immediately after the user taps "Allow".
     LaunchedEffect(refreshKey) {
-        // Check immediately
+        // Check #1 — instant (catches all permissions except battery on some devices)
         isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context)
         isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context)
         canDrawOverlays   = PersistenceManager.canDrawOverlays(context)
@@ -88,7 +90,16 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
         hasUsageStats     = PersistenceManager.hasUsageStatsPermission(context)
         hasOemAutostart   = PersistenceManager.hasOemAutostartSetting(context)
 
-        // Wait 500ms for Android's internal database to save the new Battery State, then check again
+        // Check #2 — wait for Android's PowerManager cache to flush
+        kotlinx.coroutines.delay(500)
+        isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context)
+        isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context)
+        canDrawOverlays   = PersistenceManager.canDrawOverlays(context)
+        isDeviceAdmin     = MonkDeviceAdminReceiver.isAdminActive(context)
+        hasUsageStats     = PersistenceManager.hasUsageStatsPermission(context)
+        hasOemAutostart   = PersistenceManager.hasOemAutostartSetting(context)
+
+        // Check #3 — final safety net for very slow OEM implementations
         kotlinx.coroutines.delay(500)
         isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context)
         isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context)
@@ -98,9 +109,18 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
         hasOemAutostart   = PersistenceManager.hasOemAutostartSetting(context)
     }
 
+    // ── Lifecycle observer — bumps refreshKey on every resume ────────────────
+    // Placed AFTER LaunchedEffect so the effect is registered before the first
+    // ON_RESUME fires (matters if the composable enters while already resumed).
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
-    // FIX 1: These must be declared at the top of the composable, not inside an `if` block,
-    // because Compose requires all remember() calls to be called unconditionally (Rules of Hooks).
+    // ── OEM-visited tracking (Rules of Hooks: always called, never inside if) ──
     var userVisitedAutostart by remember { mutableStateOf(prefs.getBoolean("visited_autostart", false)) }
     var visitedMiuiPower     by remember { mutableStateOf(prefs.getBoolean("visited_miui_power", false)) }
 
@@ -111,11 +131,11 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
     val batteryOptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        // Just refresh the UI to check the real Android permission state
+        // Do NOT rely on SharedPreferences flags here.
+        // Just bump refreshKey and let the polling LaunchedEffect read the real system state.
         refreshKey = System.currentTimeMillis()
     }
 
-    // FIX 2: allCriticalGranted now references userVisitedAutostart which is declared above
     val allCriticalGranted = isAccessibilityOn && isBatteryExempt && canDrawOverlays &&
             (!hasOemAutostart || userVisitedAutostart) &&
             (!isXiaomi || visitedMiuiPower)
@@ -190,7 +210,6 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
         )
 
         // MIUI-specific: second power saver screen (only shown on Xiaomi devices)
-        // FIX 3: prefs is now accessible here because it's declared at the top of the composable
         if (isXiaomi) {
             Spacer(modifier = Modifier.height(10.dp))
             val miuiPowerIntent = remember { PersistenceManager.buildMiuiPowerKeeperIntent(context) }
