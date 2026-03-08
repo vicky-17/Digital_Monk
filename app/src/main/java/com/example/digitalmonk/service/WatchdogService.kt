@@ -153,6 +153,7 @@ class WatchdogService : android.app.Service() {
         }
     }
 
+
     private fun startHealthCheckLoop() {
         handler.removeCallbacks(healthCheckRunnable)
         handler.postDelayed(healthCheckRunnable, HEALTH_CHECK_INTERVAL_MS)
