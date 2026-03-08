@@ -84,6 +84,44 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean(KEY_VPN_FILTER, false)
         set(value) = prefs.edit().putBoolean(KEY_VPN_FILTER, value).apply()
 
+    // ── VPN Heartbeat (lightweight — no Room needed) ─────────────────────────
+    //
+    // Written by DnsVpnService every 7 min (ALIVE) and on clean stop (STOPPED).
+    // Read by VpnHeartbeatMonitorWorker to detect unexpected kills.
+    // When Room is fully wired, swap this for VpnHeartBeatDao.
+
+    var lastVpnHeartbeatType: String
+        get() = prefs.getString(KEY_LAST_HEARTBEAT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_LAST_HEARTBEAT, value).apply()
+
+    var lastVpnHeartbeatTimestamp: Long
+        get() = prefs.getLong(KEY_LAST_HEARTBEAT_TS, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_HEARTBEAT_TS, value).apply()
+
+    // ── VPN Keep-Alive ────────────────────────────────────────────────────────
+    //
+    // When ON: WatchdogService restarts DnsVpnService if it dies unexpectedly.
+    // Screen-on BroadcastReceiver checks tunnel health on every wake.
+    // WorkManager heartbeat watchdog runs every 15 min as a backup.
+    //
+    // Matches "Keep VPN alive" toggle in Detoxify's VPN Settings screen.
+
+    var keepVpnAlive: Boolean
+        get() = prefs.getBoolean(KEY_KEEP_VPN_ALIVE, true)   // ON by default — safer
+        set(value) = prefs.edit().putBoolean(KEY_KEEP_VPN_ALIVE, value).apply()
+
+    // ── Prevent VPN Override ──────────────────────────────────────────────────
+    //
+    // When ON: onRevoke() in DnsVpnService immediately re-requests VPN permission
+    // and restarts the tunnel whenever another VPN tries to displace ours.
+    // Requires PIN to disable (PIN-gate enforced in the UI toggle).
+    //
+    // Matches "Prevent VPN override" toggle in Detoxify's VPN Settings screen.
+
+    var preventVpnOverride: Boolean
+        get() = prefs.getBoolean(KEY_PREVENT_VPN_OVERRIDE, false)
+        set(value) = prefs.edit().putBoolean(KEY_PREVENT_VPN_OVERRIDE, value).apply()
+
     // ── Subscription / Premium ────────────────────────────────────────────────
     // (billing server validates; we only cache the state locally)
 
@@ -98,16 +136,20 @@ class PrefsManager(context: Context) {
     // ── Keys ──────────────────────────────────────────────────────────────────
 
     companion object {
-        private const val KEY_PIN                = "parent_pin"
-        private const val KEY_SETUP_COMPLETE     = "setup_complete"
-        private const val KEY_BLOCK_SHORTS       = "block_shorts"
-        private const val KEY_BLOCK_PORN         = "block_porn"
-        private const val KEY_SAFE_SEARCH        = "safe_search"
-        private const val KEY_BLOCKED_PACKAGES   = "blocked_packages"
-        private const val KEY_SCREEN_TIME_LIMIT  = "screen_time_limit"
-        private const val KEY_SCREEN_TIME_ENABLED = "screen_time_enabled"
-        private const val KEY_VPN_FILTER         = "vpn_filter_enabled"
-        private const val KEY_IS_PREMIUM         = "is_premium"
-        private const val KEY_PREMIUM_EXPIRY     = "premium_expiry"
+        private const val KEY_PIN                  = "parent_pin"
+        private const val KEY_SETUP_COMPLETE       = "setup_complete"
+        private const val KEY_BLOCK_SHORTS         = "block_shorts"
+        private const val KEY_BLOCK_PORN           = "block_porn"
+        private const val KEY_SAFE_SEARCH          = "safe_search"
+        private const val KEY_BLOCKED_PACKAGES     = "blocked_packages"
+        private const val KEY_SCREEN_TIME_LIMIT    = "screen_time_limit"
+        private const val KEY_SCREEN_TIME_ENABLED  = "screen_time_enabled"
+        private const val KEY_VPN_FILTER           = "vpn_filter_enabled"
+        private const val KEY_KEEP_VPN_ALIVE       = "keep_vpn_alive"
+        private const val KEY_PREVENT_VPN_OVERRIDE = "prevent_vpn_override"
+        private const val KEY_LAST_HEARTBEAT       = "last_vpn_heartbeat_type"
+        private const val KEY_LAST_HEARTBEAT_TS    = "last_vpn_heartbeat_ts"
+        private const val KEY_IS_PREMIUM           = "is_premium"
+        private const val KEY_PREMIUM_EXPIRY       = "premium_expiry"
     }
 }

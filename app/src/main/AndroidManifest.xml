@@ -35,8 +35,6 @@
             android:name="android.permission.QUERY_ALL_PACKAGES"
             tools:ignore="QueryAllPackagesPermission" />
 
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
     <application
             android:name=".DigitalMonkApp"
             android:allowBackup="false"
@@ -121,6 +119,18 @@
                     android:value="dns_filter_for_parental_control" />
         </service>
 
+        <!-- ── VPN Monitor Service (Layer 3 keep-alive companion) ─────── -->
+        <!--
+            Bound service — runs alongside DnsVpnService.
+            When OEM kills the VPN process, this service's onDestroy() fires,
+            reads the last heartbeat, and restarts DnsVpnService if it was
+            killed unexpectedly (not stopped cleanly by the user).
+            exported="false": only our own app can bind to it.
+        -->
+        <service
+                android:name=".service.vpn.VpnMonitorService"
+                android:exported="false" />
+
         <!-- ── Overlay Service ────────────────────────────────────────── -->
 
         <service
@@ -173,6 +183,23 @@
                 <action android:name="android.intent.action.PACKAGE_ADDED" />
                 <action android:name="android.intent.action.PACKAGE_REMOVED" />
                 <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── App Update Receiver ───────────────────────────────────── -->
+        <!--
+            Fires after our own APK is updated (Play Store or ADB install).
+            All running services are killed on update — this receiver restarts
+            DnsVpnService and re-schedules the WorkManager watchdog if the
+            VPN filter was active before the update.
+            exported="false": MY_PACKAGE_REPLACED is only sent to our own app,
+            no data scheme needed.
+        -->
+        <receiver
+                android:name=".receiver.AppUpdateReceiver"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
