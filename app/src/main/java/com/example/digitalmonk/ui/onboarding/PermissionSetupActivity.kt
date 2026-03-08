@@ -70,13 +70,34 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val isAccessibilityOn by remember(refreshKey) { mutableStateOf(PermissionHelper.isAccessibilityEnabled(context)) }
-    val isBatteryExempt   by remember(refreshKey) { mutableStateOf(PersistenceManager.isBatteryOptimizationDisabled(context)) }
-    val canDrawOverlays   by remember(refreshKey) { mutableStateOf(PersistenceManager.canDrawOverlays(context)) }
-    val isDeviceAdmin     by remember(refreshKey) { mutableStateOf(MonkDeviceAdminReceiver.isAdminActive(context)) }
-    val hasUsageStats     by remember(refreshKey) { mutableStateOf(PersistenceManager.hasUsageStatsPermission(context)) }
-    val hasOemAutostart   by remember(refreshKey) { mutableStateOf(PersistenceManager.hasOemAutostartSetting(context)) }
+    var isAccessibilityOn by remember { mutableStateOf(PermissionHelper.isAccessibilityEnabled(context)) }
+    var isBatteryExempt   by remember { mutableStateOf(PersistenceManager.isBatteryOptimizationDisabled(context)) }
+    var canDrawOverlays   by remember { mutableStateOf(PersistenceManager.canDrawOverlays(context)) }
+    var isDeviceAdmin     by remember { mutableStateOf(MonkDeviceAdminReceiver.isAdminActive(context)) }
+    var hasUsageStats     by remember { mutableStateOf(PersistenceManager.hasUsageStatsPermission(context)) }
+    var hasOemAutostart   by remember { mutableStateOf(PersistenceManager.hasOemAutostartSetting(context)) }
     val isXiaomi          = PersistenceManager.detectOem() == PersistenceManager.OemType.XIAOMI
+
+    // NEW: Poll the system when returning to this screen
+    LaunchedEffect(refreshKey) {
+        // Check immediately
+        isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context)
+        isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context)
+        canDrawOverlays   = PersistenceManager.canDrawOverlays(context)
+        isDeviceAdmin     = MonkDeviceAdminReceiver.isAdminActive(context)
+        hasUsageStats     = PersistenceManager.hasUsageStatsPermission(context)
+        hasOemAutostart   = PersistenceManager.hasOemAutostartSetting(context)
+
+        // Wait 500ms for Android's internal database to save the new Battery State, then check again
+        kotlinx.coroutines.delay(500)
+        isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context)
+        isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context)
+        canDrawOverlays   = PersistenceManager.canDrawOverlays(context)
+        isDeviceAdmin     = MonkDeviceAdminReceiver.isAdminActive(context)
+        hasUsageStats     = PersistenceManager.hasUsageStatsPermission(context)
+        hasOemAutostart   = PersistenceManager.hasOemAutostartSetting(context)
+    }
+
 
     // FIX 1: These must be declared at the top of the composable, not inside an `if` block,
     // because Compose requires all remember() calls to be called unconditionally (Rules of Hooks).

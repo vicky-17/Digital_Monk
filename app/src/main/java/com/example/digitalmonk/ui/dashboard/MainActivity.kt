@@ -173,8 +173,21 @@ class MainActivity : BaseActivity() {
         var sidebarOpen by remember { mutableStateOf(false) }
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
-        // 3. Centralized refresh key
+
+        // 1. Centralized refresh key
         var refreshKey by remember { mutableLongStateOf(0L) }
+
+        // 2. DECLARE IT AS A VAR BEFORE THE LAUNCHED EFFECT
+        var permissionsState by remember { mutableStateOf(getPermissionsState(context)) }
+
+        // 3. Now the effect can successfully update the variable
+        LaunchedEffect(refreshKey) {
+            permissionsState = getPermissionsState(context)
+            kotlinx.coroutines.delay(500)
+            permissionsState = getPermissionsState(context)
+            kotlinx.coroutines.delay(500)
+            permissionsState = getPermissionsState(context)
+        }
 
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
@@ -184,14 +197,12 @@ class MainActivity : BaseActivity() {
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
 
-        // 4. Calculate permissions ONCE based on the refreshKey
-        val permissionsState = remember(refreshKey) { getPermissionsState(context) }
-
         val scrimAlpha by animateFloatAsState(
             targetValue = if (sidebarOpen) 0.6f else 0f,
             animationSpec = tween(300),
             label = "scrim"
         )
+
 
         Box(modifier = Modifier.fillMaxSize().background(BgDeep)) {
             // ── Main content ─────────────────────────────────────────────────

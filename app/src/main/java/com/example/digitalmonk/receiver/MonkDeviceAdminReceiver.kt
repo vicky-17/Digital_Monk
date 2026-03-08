@@ -60,6 +60,7 @@ class MonkDeviceAdminReceiver : DeviceAdminReceiver() {
                 "A parent PIN is required to do this."
     }
 
+    @Suppress("OVERRIDE_DEPRECATION") // <-- Add this line here
     override fun onPasswordChanged(context: Context, intent: Intent) {
         Log.d(TAG, "Device password changed")
     }
