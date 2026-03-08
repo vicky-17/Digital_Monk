@@ -223,7 +223,10 @@ class MainActivity : BaseActivity() {
 
         val batteryLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
-        ) { refreshKey = System.currentTimeMillis() }
+        ) {
+            PersistenceManager.setOemBatteryFixApplied(context, true)
+            refreshKey = System.currentTimeMillis()
+        }
 
         val grantedCount = listOf(isAccessibilityOn, isBatteryExempt, canDrawOverlays, isDeviceAdmin, hasUsageStats, hasNotification).count { it }
         val totalCount   = 6

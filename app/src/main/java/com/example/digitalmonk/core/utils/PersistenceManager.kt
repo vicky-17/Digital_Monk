@@ -22,6 +22,14 @@ object PersistenceManager {
 
     private const val TAG = "PersistenceManager"
 
+    fun setOemBatteryFixApplied(context: Context, applied: Boolean) =
+        context.getSharedPreferences("digital_monk_prefs", Context.MODE_PRIVATE)
+            .edit().putBoolean("oem_battery_fix", applied).apply()
+
+    fun isOemBatteryFixApplied(context: Context): Boolean =
+        context.getSharedPreferences("digital_monk_prefs", Context.MODE_PRIVATE)
+            .getBoolean("oem_battery_fix", false)
+
     // ── Battery Optimization ──────────────────────────────────────────────────
 
     /**
@@ -30,9 +38,9 @@ object PersistenceManager {
      */
     fun isBatteryOptimizationDisabled(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val isIgnoring = pm.isIgnoringBatteryOptimizations(context.packageName)
-        Log.d("PersistenceManager", "Battery optimization check: $isIgnoring")
-        return isIgnoring
+        val isStandardIgnoring = pm.isIgnoringBatteryOptimizations(context.packageName)
+        return if (detectOem() == OemType.GENERIC) isStandardIgnoring
+        else isStandardIgnoring || isOemBatteryFixApplied(context)
     }
 
     /**

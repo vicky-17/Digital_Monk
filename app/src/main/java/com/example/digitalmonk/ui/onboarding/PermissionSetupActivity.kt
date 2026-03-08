@@ -89,7 +89,10 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
 
     val batteryOptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { refreshKey = System.currentTimeMillis() }
+    ) {
+        PersistenceManager.setOemBatteryFixApplied(context, true)
+        refreshKey = System.currentTimeMillis()
+    }
 
     // FIX 2: allCriticalGranted now references userVisitedAutostart which is declared above
     val allCriticalGranted = isAccessibilityOn && isBatteryExempt && canDrawOverlays &&
