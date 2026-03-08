@@ -82,7 +82,21 @@ private val Divider      = Color(0xFF1E293B)
 private val SidebarBg    = Color(0xFF0B1322)
 private val SidebarEdge  = Color(0xFF1E3A5F)
 
+
+data class PermissionsState(
+    val isAccessibilityOn: Boolean,
+    val isBatteryExempt: Boolean,
+    val canDrawOverlays: Boolean,
+    val isDeviceAdmin: Boolean,
+    val hasUsageStats: Boolean,
+    val hasNotification: Boolean
+)
+
+
+
 class MainActivity : BaseActivity() {
+
+
 
     private val requestNotificationsPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -103,6 +117,18 @@ class MainActivity : BaseActivity() {
                 AppContent(prefs)
             }
         }
+    }
+
+    // 2. Create the unified check function inside MainActivity
+    private fun getPermissionsState(context: android.content.Context): PermissionsState {
+        return PermissionsState(
+            isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context), // Uses PermissionHelper
+            isBatteryExempt = PersistenceManager.isBatteryOptimizationDisabled(context),
+            canDrawOverlays = PersistenceManager.canDrawOverlays(context),
+            isDeviceAdmin = MonkDeviceAdminReceiver.isAdminActive(context),
+            hasUsageStats = PersistenceManager.hasUsageStatsPermission(context),
+            hasNotification = PermissionHelper.hasNotificationPermission(context)
+        )
     }
 
     private fun askForNotificationPermission() {
@@ -145,6 +171,22 @@ class MainActivity : BaseActivity() {
     @Composable
     fun Dashboard(prefs: PrefsManager, onLock: () -> Unit) {
         var sidebarOpen by remember { mutableStateOf(false) }
+        val context = LocalContext.current
+        val lifecycleOwner = LocalLifecycleOwner.current
+        // 3. Centralized refresh key
+        var refreshKey by remember { mutableLongStateOf(0L) }
+
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        // 4. Calculate permissions ONCE based on the refreshKey
+        val permissionsState = remember(refreshKey) { getPermissionsState(context) }
+
         val scrimAlpha by animateFloatAsState(
             targetValue = if (sidebarOpen) 0.6f else 0f,
             animationSpec = tween(300),
@@ -155,6 +197,8 @@ class MainActivity : BaseActivity() {
             // ── Main content ─────────────────────────────────────────────────
             DashboardContent(
                 prefs = prefs,
+                permissionsState = permissionsState,
+                onRefresh = { refreshKey = System.currentTimeMillis() },
                 onLock = onLock,
                 onMenuClick = { sidebarOpen = true }
             )
@@ -175,17 +219,13 @@ class MainActivity : BaseActivity() {
             // ── Sidebar ──────────────────────────────────────────────────────
             AnimatedVisibility(
                 visible = sidebarOpen,
-                enter = slideInHorizontally(
-                    initialOffsetX = { -it },
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)
-                ),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { -it },
-                    animationSpec = tween(260)
-                )
+                enter = slideInHorizontally(initialOffsetX = { -it }),
+                exit = slideOutHorizontally(targetOffsetX = { -it })
             ) {
+                // Pass the state down
                 PermissionsSidebar(
-                    prefs = prefs,
+                    permissionsState = permissionsState,
+                    onRefresh = { refreshKey = System.currentTimeMillis() },
                     onClose = { sidebarOpen = false }
                 )
             }
@@ -197,38 +237,35 @@ class MainActivity : BaseActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Composable
-    fun PermissionsSidebar(prefs: PrefsManager, onClose: () -> Unit) {
+    fun PermissionsSidebar(
+        permissionsState: PermissionsState, // <-- ADDED
+        onRefresh: () -> Unit,              // <-- ADDED
+        onClose: () -> Unit
+    ) {
         val context = LocalContext.current
-        val lifecycleOwner = LocalLifecycleOwner.current
-        var refreshKey by remember { mutableLongStateOf(0L) }
 
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-
-        val isAccessibilityOn = remember(refreshKey) { isAccessibilityEnabled(context) }
-        val isBatteryExempt   = remember(refreshKey) { PersistenceManager.isBatteryOptimizationDisabled(context) }
-        val canDrawOverlays   = remember(refreshKey) { PersistenceManager.canDrawOverlays(context) }
-        val isDeviceAdmin     = remember(refreshKey) { MonkDeviceAdminReceiver.isAdminActive(context) }
-        val hasUsageStats     = remember(refreshKey) { PersistenceManager.hasUsageStatsPermission(context) }
-        val hasNotification   = remember(refreshKey) { PermissionHelper.hasNotificationPermission(context) }
+        // NO MORE Lifecycle Observer here! The parent handles it.
 
         val deviceAdminLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
-        ) { refreshKey = System.currentTimeMillis() }
+        ) { onRefresh() } // <-- CALL PARENT REFRESH
 
         val batteryLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) {
-            PersistenceManager.setOemBatteryFixApplied(context, true)
-            refreshKey = System.currentTimeMillis()
+            // FIXED BUG: Removed the SharedPreferences hack! Just refresh.
+            onRefresh()
         }
 
-        val grantedCount = listOf(isAccessibilityOn, isBatteryExempt, canDrawOverlays, isDeviceAdmin, hasUsageStats, hasNotification).count { it }
+        // Use the passed-down state
+        val grantedCount = listOf(
+            permissionsState.isAccessibilityOn,
+            permissionsState.isBatteryExempt,
+            permissionsState.canDrawOverlays,
+            permissionsState.isDeviceAdmin,
+            permissionsState.hasUsageStats,
+            permissionsState.hasNotification
+        ).count { it }
         val totalCount   = 6
 
         Box(
@@ -371,7 +408,7 @@ class MainActivity : BaseActivity() {
                     emoji = "♿",
                     title = "Accessibility Service",
                     subtitle = "Required for app & Shorts blocking",
-                    isGranted = isAccessibilityOn,
+                    isGranted = permissionsState.isAccessibilityOn,
                     isCritical = true,
                     onAction = {
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).also {
@@ -386,7 +423,7 @@ class MainActivity : BaseActivity() {
                     emoji = "🔋",
                     title = "Battery Optimization",
                     subtitle = "Keeps app alive in background",
-                    isGranted = isBatteryExempt,
+                    isGranted = permissionsState.isBatteryExempt,
                     isCritical = true,
                     onAction = {
                         batteryLauncher.launch(PersistenceManager.buildBatteryOptimizationIntent(context))
@@ -399,7 +436,7 @@ class MainActivity : BaseActivity() {
                     emoji = "🪟",
                     title = "Display Over Other Apps",
                     subtitle = "Shows block screen on restricted apps",
-                    isGranted = canDrawOverlays,
+                    isGranted = permissionsState.canDrawOverlays,
                     isCritical = true,
                     onAction = {
                         context.startActivity(PersistenceManager.buildOverlayPermissionIntent(context))
@@ -415,7 +452,7 @@ class MainActivity : BaseActivity() {
                     emoji = "🛡️",
                     title = "Device Admin",
                     subtitle = "Prevents app from being uninstalled",
-                    isGranted = isDeviceAdmin,
+                    isGranted = permissionsState.isDeviceAdmin,
                     isCritical = false,
                     onAction = {
                         deviceAdminLauncher.launch(MonkDeviceAdminReceiver.buildActivationIntent(context))
@@ -428,7 +465,7 @@ class MainActivity : BaseActivity() {
                     emoji = "📊",
                     title = "Usage Access",
                     subtitle = "Tracks screen time per app",
-                    isGranted = hasUsageStats,
+                    isGranted = permissionsState.hasUsageStats,
                     isCritical = false,
                     onAction = {
                         context.startActivity(PersistenceManager.buildUsageStatsIntent())
@@ -441,7 +478,7 @@ class MainActivity : BaseActivity() {
                     emoji = "🔔",
                     title = "Notifications",
                     subtitle = "Alerts when content is blocked",
-                    isGranted = hasNotification,
+                    isGranted = permissionsState.hasNotification,
                     isCritical = false,
                     onAction = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -494,7 +531,7 @@ class MainActivity : BaseActivity() {
 
     @Composable
     private fun SidebarDivider() {
-        Divider(
+        HorizontalDivider(
             color = Divider,
             thickness = 0.5.dp,
             modifier = Modifier.padding(horizontal = 20.dp)
@@ -600,6 +637,8 @@ class MainActivity : BaseActivity() {
     @Composable
     fun DashboardContent(
         prefs: PrefsManager,
+        permissionsState: PermissionsState, // <-- ADDED
+        onRefresh: () -> Unit,              // <-- ADDED
         onLock: () -> Unit,
         onMenuClick: () -> Unit
     ) {
@@ -623,26 +662,21 @@ class MainActivity : BaseActivity() {
             }
         }
 
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-
-        val isAccessibilityOn = remember(refreshKey) { isAccessibilityEnabled(context) }
-        val isBatteryExempt   = remember(refreshKey) { PersistenceManager.isBatteryOptimizationDisabled(context) }
-        val canDrawOverlays   = remember(refreshKey) { PersistenceManager.canDrawOverlays(context) }
-
         val batteryOptLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.StartActivityForResult()
-        ) { refreshKey = System.currentTimeMillis() }
+        ) { onRefresh() } // <-- CALL PARENT REFRESH
 
         var blockShorts by remember { mutableStateOf(prefs.blockShorts) }
 
-        // How many critical permissions are missing
-        val missingCritical = listOf(isAccessibilityOn, isBatteryExempt, canDrawOverlays).count { !it }
+        // Use the passed-down state for missing critical permissions
+        val missingCritical = listOf(
+            permissionsState.isAccessibilityOn,
+            permissionsState.isBatteryExempt,
+            permissionsState.canDrawOverlays
+        ).count { !it }
+
+
+
 
         Column(
             modifier = Modifier
@@ -791,11 +825,11 @@ class MainActivity : BaseActivity() {
 
             StatusCard(
                 title = "Accessibility Service",
-                description = if (isAccessibilityOn) "Active — Monitoring is running"
+                description = if (permissionsState.isAccessibilityOn) "Active — Monitoring is running"
                 else "Disabled — Tap to enable in Settings",
-                isActive = isAccessibilityOn,
+                isActive = permissionsState.isAccessibilityOn,
                 onClick = {
-                    if (!isAccessibilityOn) {
+                    if (!permissionsState.isAccessibilityOn) {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         Toast.makeText(context, "Find 'Digital Monk' and turn ON", Toast.LENGTH_LONG).show()
                     }
@@ -806,11 +840,11 @@ class MainActivity : BaseActivity() {
 
             StatusCard(
                 title = "Battery Optimization",
-                description = if (isBatteryExempt) "Disabled — App can run freely in background"
+                description = if (permissionsState.isBatteryExempt) "Disabled — App can run freely in background"
                 else "Active — App may be killed by OEM. Tap to fix",
-                isActive = isBatteryExempt,
+                isActive = permissionsState.isBatteryExempt,
                 onClick = {
-                    if (!isBatteryExempt) {
+                    if (!permissionsState.isBatteryExempt) {
                         batteryOptLauncher.launch(PersistenceManager.buildBatteryOptimizationIntent(context))
                     }
                 }
@@ -820,11 +854,11 @@ class MainActivity : BaseActivity() {
 
             StatusCard(
                 title = "Display Over Other Apps",
-                description = if (canDrawOverlays) "Granted — Block screen can appear"
+                description = if (permissionsState.canDrawOverlays) "Granted — Block screen can appear"
                 else "Missing — Block screen won't show. Tap to fix",
-                isActive = canDrawOverlays,
+                isActive = permissionsState.canDrawOverlays,
                 onClick = {
-                    if (!canDrawOverlays) {
+                    if (!permissionsState.canDrawOverlays) {
                         context.startActivity(PersistenceManager.buildOverlayPermissionIntent(context))
                     }
                 }

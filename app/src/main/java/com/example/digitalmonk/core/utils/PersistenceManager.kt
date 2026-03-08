@@ -22,14 +22,6 @@ object PersistenceManager {
 
     private const val TAG = "PersistenceManager"
 
-    fun setOemBatteryFixApplied(context: Context, applied: Boolean) =
-        context.getSharedPreferences("digital_monk_prefs", Context.MODE_PRIVATE)
-            .edit().putBoolean("oem_battery_fix", applied).apply()
-
-    fun isOemBatteryFixApplied(context: Context): Boolean =
-        context.getSharedPreferences("digital_monk_prefs", Context.MODE_PRIVATE)
-            .getBoolean("oem_battery_fix", false)
-
     // ── Battery Optimization ──────────────────────────────────────────────────
 
     /**
@@ -37,10 +29,11 @@ object PersistenceManager {
      * If false, we must request exemption — otherwise Doze mode will kill our services.
      */
     fun isBatteryOptimizationDisabled(context: Context): Boolean {
-        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val isStandardIgnoring = pm.isIgnoringBatteryOptimizations(context.packageName)
-        return if (detectOem() == OemType.GENERIC) isStandardIgnoring
-        else isStandardIgnoring || isOemBatteryFixApplied(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            return pm.isIgnoringBatteryOptimizations(context.packageName)
+        }
+        return true
     }
 
     /**

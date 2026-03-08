@@ -90,7 +90,7 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
     val batteryOptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        PersistenceManager.setOemBatteryFixApplied(context, true)
+        // Just refresh the UI to check the real Android permission state
         refreshKey = System.currentTimeMillis()
     }
 
