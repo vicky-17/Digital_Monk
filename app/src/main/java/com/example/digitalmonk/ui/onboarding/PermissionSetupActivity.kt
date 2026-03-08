@@ -1,5 +1,6 @@
 package com.example.digitalmonk.ui.onboarding
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -7,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +58,10 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var refreshKey by remember { mutableLongStateOf(0L) }
 
+    // SharedPrefs for tracking OEM screens the user has visited
+    // (We can't programmatically detect if MIUI autostart is ON, so we track "visited")
+    val prefs = remember { context.getSharedPreferences("monk_prefs", Context.MODE_PRIVATE) }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
@@ -72,6 +76,12 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
     val isDeviceAdmin     by remember(refreshKey) { mutableStateOf(MonkDeviceAdminReceiver.isAdminActive(context)) }
     val hasUsageStats     by remember(refreshKey) { mutableStateOf(PersistenceManager.hasUsageStatsPermission(context)) }
     val hasOemAutostart   by remember(refreshKey) { mutableStateOf(PersistenceManager.hasOemAutostartSetting(context)) }
+    val isXiaomi          = PersistenceManager.detectOem() == PersistenceManager.OemType.XIAOMI
+
+    // FIX 1: These must be declared at the top of the composable, not inside an `if` block,
+    // because Compose requires all remember() calls to be called unconditionally (Rules of Hooks).
+    var userVisitedAutostart by remember { mutableStateOf(prefs.getBoolean("visited_autostart", false)) }
+    var visitedMiuiPower     by remember { mutableStateOf(prefs.getBoolean("visited_miui_power", false)) }
 
     val deviceAdminLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -81,7 +91,10 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
         ActivityResultContracts.StartActivityForResult()
     ) { refreshKey = System.currentTimeMillis() }
 
-    val allCriticalGranted = isAccessibilityOn && isBatteryExempt && canDrawOverlays
+    // FIX 2: allCriticalGranted now references userVisitedAutostart which is declared above
+    val allCriticalGranted = isAccessibilityOn && isBatteryExempt && canDrawOverlays &&
+            (!hasOemAutostart || userVisitedAutostart) &&
+            (!isXiaomi || visitedMiuiPower)
 
     Column(
         modifier = Modifier
@@ -152,6 +165,47 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
             actionLabel = "Grant Permission"
         )
 
+        // MIUI-specific: second power saver screen (only shown on Xiaomi devices)
+        // FIX 3: prefs is now accessible here because it's declared at the top of the composable
+        if (isXiaomi) {
+            Spacer(modifier = Modifier.height(10.dp))
+            val miuiPowerIntent = remember { PersistenceManager.buildMiuiPowerKeeperIntent(context) }
+            PermissionCard(
+                emoji = "⚡",
+                title = "MIUI Power Saving (Xiaomi)",
+                description = "MIUI has a second battery manager that kills apps separately from Android's " +
+                        "own optimizer. Open it and set Digital Monk to 'No restrictions'.",
+                isGranted = visitedMiuiPower,
+                isCritical = true,
+                onAction = {
+                    prefs.edit().putBoolean("visited_miui_power", true).apply()
+                    visitedMiuiPower = true
+                    if (miuiPowerIntent != null) context.startActivity(miuiPowerIntent)
+                },
+                actionLabel = "Open MIUI Power Settings"
+            )
+        }
+
+        // OEM Autostart card — shown on MIUI, ColorOS, EMUI, etc. (when the screen exists)
+        if (hasOemAutostart) {
+            Spacer(modifier = Modifier.height(10.dp))
+            val oemIntent = remember { PersistenceManager.buildAutostartIntent(context) }
+            PermissionCard(
+                emoji = "🔁",
+                title = "Autostart (${Build.MANUFACTURER})",
+                description = "On ${Build.MANUFACTURER} devices, you must manually whitelist this app " +
+                        "to allow it to start on boot.\n\n${PersistenceManager.getAutostartInstructions()}",
+                isGranted = userVisitedAutostart,
+                isCritical = true,
+                onAction = {
+                    prefs.edit().putBoolean("visited_autostart", true).apply()
+                    userVisitedAutostart = true
+                    if (oemIntent != null) context.startActivity(oemIntent)
+                },
+                actionLabel = "Open Autostart"
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         SectionHeader("🟡 Important")
@@ -181,23 +235,6 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
             },
             actionLabel = "Grant Access"
         )
-
-        // OEM Autostart card — only shown on MIUI / ColorOS / EMUI etc.
-        if (hasOemAutostart) {
-            Spacer(modifier = Modifier.height(10.dp))
-            val oemIntent = PersistenceManager.buildAutostartIntent(context)
-            PermissionCard(
-                emoji = "🔁",
-                title = "Autostart (${Build.MANUFACTURER})",    // ← Build import now resolves
-                description = "On ${Build.MANUFACTURER} devices, you must manually whitelist this app to allow it to start on boot.\n\n${PersistenceManager.getAutostartInstructions()}",
-                isGranted = false,
-                isCritical = false,
-                onAction = {
-                    if (oemIntent != null) context.startActivity(oemIntent)
-                },
-                actionLabel = "Open Autostart"
-            )
-        }
 
         Spacer(modifier = Modifier.height(32.dp))
 

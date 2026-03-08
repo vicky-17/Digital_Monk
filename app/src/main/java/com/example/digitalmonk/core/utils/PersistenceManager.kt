@@ -156,6 +156,19 @@ object PersistenceManager {
         }
     }
 
+
+    // Add this to PersistenceManager.kt
+    fun buildMiuiPowerKeeperIntent(context: Context): Intent? {
+        if (detectOem() != OemType.XIAOMI) return null
+        val intent = Intent().setComponent(
+            android.content.ComponentName(
+                "com.miui.powerkeeper",
+                "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"
+            )
+        )
+        return if (isIntentResolvable(context, intent)) intent else null
+    }
+
     fun hasOemAutostartSetting(context: Context): Boolean {
         return buildAutostartIntent(context) != null
     }

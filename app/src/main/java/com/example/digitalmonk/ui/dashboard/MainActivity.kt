@@ -39,9 +39,13 @@ import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.digitalmonk.core.utils.PermissionHelper
 import android.net.VpnService
-import androidx.activity.compose.rememberLauncherForActivityResult
 import android.app.Activity.RESULT_OK
 import com.example.digitalmonk.service.vpn.DnsVpnService
+import com.example.digitalmonk.core.utils.PersistenceManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.lifecycle.viewmodel.compose.viewModel
+
+
 
 // TODO: Add @AndroidEntryPoint when Hilt is added to build.gradle.kts
 class MainActivity : BaseActivity() {
@@ -95,9 +99,17 @@ class MainActivity : BaseActivity() {
         if (isUnlocked) {
             Dashboard(prefs, onLock = { isUnlocked = false })
         } else {
-            PinGateScreen(prefs, onSuccess = {
-                isUnlocked = true
-            })
+            PinGateScreen(
+                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                    factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
+                            return com.example.digitalmonk.ui.auth.AuthViewModel(prefs) as T
+                        }
+                    }
+                ),
+                onSuccess = { isUnlocked = true }
+            )
         }
     }
 
@@ -141,9 +153,15 @@ class MainActivity : BaseActivity() {
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
 
-        val isAccessibilityOn by remember(refreshKey) {
-            mutableStateOf(isAccessibilityEnabled(context))
-        }
+        val isAccessibilityOn = remember(refreshKey) { isAccessibilityEnabled(context) }
+        val isBatteryExempt   = remember(refreshKey) { PersistenceManager.isBatteryOptimizationDisabled(context) }
+        val canDrawOverlays   = remember(refreshKey) { PersistenceManager.canDrawOverlays(context) }
+
+
+        val batteryOptLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { refreshKey = System.currentTimeMillis() }
+
         var blockShorts by remember { mutableStateOf(prefs.blockShorts) }
 
         Column(
@@ -194,6 +212,34 @@ class MainActivity : BaseActivity() {
                             "Find 'Digital Monk' and turn ON",
                             Toast.LENGTH_LONG
                         ).show()
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            StatusCard(
+                title = "Battery Optimization",
+                description = if (isBatteryExempt) "Disabled — App can run freely in background"
+                else "Active — App may be killed by MIUI/OEM. Tap to fix",
+                isActive = isBatteryExempt,
+                onClick = {
+                    if (!isBatteryExempt) {
+                        batteryOptLauncher.launch(PersistenceManager.buildBatteryOptimizationIntent(context))
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            StatusCard(
+                title = "Display Over Other Apps",
+                description = if (canDrawOverlays) "Granted — Block screen can appear"
+                else "Missing — Block screen won't show. Tap to fix",
+                isActive = canDrawOverlays,
+                onClick = {
+                    if (!canDrawOverlays) {
+                        context.startActivity(PersistenceManager.buildOverlayPermissionIntent(context))
                     }
                 }
             )
@@ -328,7 +374,8 @@ class MainActivity : BaseActivity() {
         description: String,
         isActive: Boolean,
         onClick: () -> Unit
-    ) {
+    )
+    {
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = if (isActive) Color(0xFF052E16) else Color(0xFF1C1917)

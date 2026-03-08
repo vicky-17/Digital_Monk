@@ -304,4 +304,21 @@ object DnsPacketParser {
         while (sum ushr 16 != 0) sum = (sum and 0xFFFF) + (sum ushr 16)
         return sum.inv() and 0xFFFF
     }
+    /**
+     * Wraps a raw upstream DNS response in an IPv4/UDP packet
+     * addressed back to the original querying client.
+     */
+    fun wrapUpstreamResponse(
+        originalQuery: DnsQuery,
+        dnsResponse: ByteArray
+    ): ByteArray = wrapInIpUdp(
+        srcIp    = originalQuery.dstIp,
+        dstIp    = originalQuery.srcIp,
+        srcPort  = originalQuery.dstPort,
+        dstPort  = originalQuery.srcPort,
+        dnsPayload = dnsResponse
+    )
+
+
+
 }

@@ -17,7 +17,6 @@ import java.io.FileOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
-import java.nio.ByteBuffer
 import kotlin.concurrent.thread
 
 class DnsVpnService : VpnService() {
@@ -28,6 +27,8 @@ class DnsVpnService : VpnService() {
     private lateinit var filterEngine: DnsFilterEngine
 
     companion object {
+        @Volatile var serviceRunning: Boolean = false
+            private set
         private const val TAG = "DnsVpnService"
         const val ACTION_STOP = "ACTION_STOP"
 
@@ -99,6 +100,7 @@ class DnsVpnService : VpnService() {
             }
 
             isRunning = true
+            serviceRunning = true
             vpnThread = thread(name = "dns-vpn-thread") { runVpnLoop() }
             Log.i(TAG, "✅ VPN started — DNS filter is active")
 
@@ -110,6 +112,7 @@ class DnsVpnService : VpnService() {
 
     private fun stopVpn() {
         isRunning = false
+        serviceRunning = false
         vpnThread?.interrupt()
         vpnThread = null
         try { vpnInterface?.close() } catch (_: Exception) {}
@@ -165,8 +168,8 @@ class DnsVpnService : VpnService() {
     }
 
     private fun forwardToUpstream(query: DnsPacketParser.DnsQuery): ByteArray? {
+        val socket = DatagramSocket()
         return try {
-            val socket = DatagramSocket()
             protect(socket)
             socket.soTimeout = DNS_TIMEOUT_MS
 
@@ -177,58 +180,18 @@ class DnsVpnService : VpnService() {
             val responseBuffer = ByteArray(4096)
             val receivePacket = DatagramPacket(responseBuffer, responseBuffer.size)
             socket.receive(receivePacket)
-            socket.close()
 
-            wrapDnsResponseForTunnel(query, receivePacket.data.copyOf(receivePacket.length))
+            DnsPacketParser.wrapUpstreamResponse(query, receivePacket.data.copyOf(receivePacket.length))
 
         } catch (e: Exception) {
             Log.w(TAG, "Upstream DNS failed for ${query.domain}: ${e.message}")
             DnsPacketParser.buildNxDomainResponse(query)
+        } finally {
+            try { socket.close() } catch (_: Exception) {}
         }
     }
 
-    private fun wrapDnsResponseForTunnel(
-        originalQuery: DnsPacketParser.DnsQuery,
-        dnsResponse: ByteArray
-    ): ByteArray {
-        val udpLen = 8 + dnsResponse.size
-        val ipLen  = 20 + udpLen
-        val buf    = ByteBuffer.allocate(ipLen)
 
-        buf.put(0x45.toByte())
-        buf.put(0)
-        buf.putShort(ipLen.toShort())
-        buf.putShort(0)
-        buf.putShort(0x4000.toShort())
-        buf.put(64)
-        buf.put(17)
-        buf.putShort(0)
-        buf.put(originalQuery.dstIp)
-        buf.put(originalQuery.srcIp)
-
-        val headerBytes = buf.array().copyOf(20)
-        val checksum = ipChecksum(headerBytes)
-        buf.array()[10] = (checksum ushr 8).toByte()
-        buf.array()[11] = (checksum and 0xFF).toByte()
-
-        buf.putShort(originalQuery.dstPort.toShort())
-        buf.putShort(originalQuery.srcPort.toShort())
-        buf.putShort(udpLen.toShort())
-        buf.putShort(0)
-        buf.put(dnsResponse)
-
-        return buf.array().copyOf(ipLen)
-    }
-
-    private fun ipChecksum(header: ByteArray): Int {
-        var sum = 0
-        for (i in header.indices step 2) {
-            val word = ((header[i].toInt() and 0xFF) shl 8) or (header[i + 1].toInt() and 0xFF)
-            sum += word
-        }
-        while (sum ushr 16 != 0) sum = (sum and 0xFFFF) + (sum ushr 16)
-        return sum.inv() and 0xFFFF
-    }
 
     private fun buildNotification(): Notification {
         val stopIntent = Intent(this, DnsVpnService::class.java).apply { action = ACTION_STOP }

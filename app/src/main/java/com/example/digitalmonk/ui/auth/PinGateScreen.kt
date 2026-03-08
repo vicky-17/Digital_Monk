@@ -1,32 +1,22 @@
 package com.example.digitalmonk.ui.auth
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import com.example.digitalmonk.data.local.prefs.PrefsManager
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 
 @Composable
-fun PinGateScreen(prefs: PrefsManager, onSuccess: () -> Unit) {
+fun PinGateScreen(viewModel: AuthViewModel, onSuccess: () -> Unit) {
     var enteredPin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
+    val error by viewModel.pinError.collectAsState()
 
     Column(
         modifier = Modifier
@@ -40,7 +30,7 @@ fun PinGateScreen(prefs: PrefsManager, onSuccess: () -> Unit) {
             onValueChange = {
                 if (it.length <= 6) {
                     enteredPin = it
-                    error = false
+                    viewModel.clearError()
                 }
             },
             label = { Text("Parent PIN") },
@@ -48,18 +38,15 @@ fun PinGateScreen(prefs: PrefsManager, onSuccess: () -> Unit) {
             singleLine = true,
             isError = error,
             modifier = Modifier.fillMaxWidth(),
-            //1. Tell the keyboard to show a "Done" button and use a Number pad
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.NumberPassword,
                 imeAction = ImeAction.Done
             ),
-            // 2. Define what happens when the "Done/Enter" button is pressed
             keyboardActions = KeyboardActions(
-                onDone={
-                    if (enteredPin == prefs.getPin()){
+                onDone = {
+                    if (viewModel.validatePin(enteredPin)) {
                         onSuccess()
                     } else {
-                        error = true
                         enteredPin = ""
                     }
                 }
@@ -68,10 +55,9 @@ fun PinGateScreen(prefs: PrefsManager, onSuccess: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = {
-                if (enteredPin == prefs.getPin()) {
+                if (viewModel.validatePin(enteredPin)) {
                     onSuccess()
                 } else {
-                    error = true
                     enteredPin = ""
                 }
             },

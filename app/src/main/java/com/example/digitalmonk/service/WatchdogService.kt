@@ -18,6 +18,8 @@ import com.example.digitalmonk.core.utils.Constants
 import com.example.digitalmonk.data.local.prefs.PrefsManager
 import com.example.digitalmonk.service.vpn.DnsVpnService
 import com.example.digitalmonk.ui.dashboard.MainActivity
+import android.os.HandlerThread
+
 
 /**
  * WatchdogService — the immortal guardian.
@@ -39,7 +41,8 @@ import com.example.digitalmonk.ui.dashboard.MainActivity
  */
 class WatchdogService : android.app.Service() {
 
-    private val handler = Handler(Looper.getMainLooper())
+    private val healthCheckThread = HandlerThread("watchdog-health-checker").also { it.start() }
+    private val handler = Handler(healthCheckThread.looper)
     private lateinit var prefs: PrefsManager
 
     companion object {
@@ -116,18 +119,19 @@ class WatchdogService : android.app.Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Called when the user swipes our app from recents.
-        // Re-schedule ourselves to restart.
-        Log.w(TAG, "Task removed — rescheduling restart")
+        Log.w(TAG, "Task removed — scheduling restart")
         val restartIntent = Intent(applicationContext, WatchdogService::class.java)
         val pendingIntent = PendingIntent.getService(
             applicationContext, 1, restartIntent,
             PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
         )
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+
+        // Use set() — doesn't require SCHEDULE_EXACT_ALARM permission.
+        // Good enough for a restart — a few seconds delay is fine.
         alarmManager.set(
             android.app.AlarmManager.ELAPSED_REALTIME,
-            android.os.SystemClock.elapsedRealtime() + 1000,
+            android.os.SystemClock.elapsedRealtime() + 3000L,
             pendingIntent
         )
         super.onTaskRemoved(rootIntent)
@@ -136,6 +140,7 @@ class WatchdogService : android.app.Service() {
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
+        healthCheckThread.quitSafely()
         Log.w(TAG, "WatchdogService destroyed — will restart via START_STICKY or JobScheduler")
     }
 
@@ -173,12 +178,7 @@ class WatchdogService : android.app.Service() {
         }
     }
 
-    private fun isDnsVpnRunning(): Boolean {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        @Suppress("DEPRECATION")
-        return manager.getRunningServices(Int.MAX_VALUE)
-            .any { it.service.className == DnsVpnService::class.java.name }
-    }
+    private fun isDnsVpnRunning(): Boolean = DnsVpnService.serviceRunning
 
     // ── Notification ──────────────────────────────────────────────────────────
 
