@@ -145,9 +145,12 @@ class MainActivity : BaseActivity() {
             }
         }
 
+        // This effect updates refreshKey every time you come back to the app
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    refreshKey = System.currentTimeMillis()
+                }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

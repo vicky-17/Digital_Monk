@@ -30,7 +30,9 @@ object PersistenceManager {
      */
     fun isBatteryOptimizationDisabled(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        return pm.isIgnoringBatteryOptimizations(context.packageName)
+        val isIgnoring = pm.isIgnoringBatteryOptimizations(context.packageName)
+        Log.d("PersistenceManager", "Battery optimization check: $isIgnoring")
+        return isIgnoring
     }
 
     /**
