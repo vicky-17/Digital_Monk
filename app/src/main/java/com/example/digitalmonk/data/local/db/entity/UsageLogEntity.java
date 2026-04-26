@@ -1,40 +1,33 @@
 package com.example.digitalmonk.data.local.db.entity;
 
-/**
- * Why we made this file:
- * This class represents a "Database Entity." Since Digital Monk needs to track
- * how long a child spends on specific apps, we must store that data locally
- * on the phone before syncing it to the web interface.
- *
- * In a professional Android app using the Room persistence library, this Java
- * class defines the structure of a table in your SQLite database. Each instance
- * of this class represents one row in the "UsageLog" table.
- *
- * What the file name defines:
- * "UsageLog" describes the data being stored (records of app activity).
- * "Entity" is a standard architectural term for a class that maps directly
- * to a database table.
- */
+import androidx.room.Entity;
+import androidx.room.PrimaryKey;
+
+@Entity(tableName = "usage_logs") // Professional practice to name the table explicitly
 public class UsageLogEntity {
 
+    @PrimaryKey(autoGenerate = true) // Room assigns unique IDs automatically
     private long id;
 
-    // Default constructor required for many Java frameworks and libraries
-    public UsageLogEntity() {
-        this.id = 0L;
+    private String packageName;
+    private long timestamp;
+    private long duration;
+
+    public UsageLogEntity() { }
+
+    public UsageLogEntity(String packageName, long duration) {
+        this.packageName = packageName;
+        this.duration = duration;
+        this.timestamp = System.currentTimeMillis();
     }
 
-    public UsageLogEntity(long id) {
-        this.id = id;
-    }
-
-    // Getter and Setter methods
-    // In Java, we use these to follow the principle of "Encapsulation"
-    public long getId() {
-        return id;
-    }
-
-    public void setId(long id) {
-        this.id = id;
-    }
+    // Getters and Setters are required for Room to access private fields
+    public long getId() { return id; }
+    public void setId(long id) { this.id = id; }
+    public String getPackageName() { return packageName; }
+    public void setPackageName(String packageName) { this.packageName = packageName; }
+    public long getTimestamp() { return timestamp; }
+    public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
+    public long getDuration() { return duration; }
+    public void setDuration(long duration) { this.duration = duration; }
 }

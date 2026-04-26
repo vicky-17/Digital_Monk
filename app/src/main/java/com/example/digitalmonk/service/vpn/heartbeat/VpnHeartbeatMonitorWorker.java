@@ -23,9 +23,10 @@ import java.util.concurrent.TimeUnit;
  * Why we made this file:
  * Android memory management is aggressive. Even Foreground Services can be killed
  * by heavily customized OEM skins (like Xiaomi's MIUI or Samsung's OneUI).
- * * This WorkManager class acts as the "Watchdog" for the VPN. Because WorkManager
+ *
+ * This WorkManager class acts as the "Watchdog" for the VPN. Because WorkManager
  * is deeply integrated into the Android OS, it survives app swiping and reboots.
- * It wakes up every 15 minutes, checks the "Heartbeat" we defined earlier, and
+ * It wakes up every 15 minutes, checks the "Heartbeat" defined in PrefsManager, and
  * forcefully revives the VPN if it detects the system killed it.
  *
  * What the file name defines:
@@ -41,7 +42,7 @@ public class VpnHeartbeatMonitorWorker extends Worker {
         super(context, workerParams);
     }
 
-    // ── Static Helper Methods (Formerly Companion Object) ─────────────────────
+    // ── Static Helper Methods ─────────────────────────────────────────────────
 
     /**
      * Schedules (or re-schedules) the periodic watchdog.
@@ -65,7 +66,8 @@ public class VpnHeartbeatMonitorWorker extends Worker {
         Log.i(TAG, "Heartbeat monitor scheduled");
     }
 
-    /** Cancel the watchdog — called when VPN is cleanly stopped by the user. */
+    /** * Cancel the watchdog — called when VPN is cleanly stopped by the user.
+     */
     public static void cancel(Context context) {
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME);
         Log.i(TAG, "Heartbeat monitor cancelled");
@@ -78,33 +80,34 @@ public class VpnHeartbeatMonitorWorker extends Worker {
     public Result doWork() {
         Log.d(TAG, "Heartbeat check running…");
 
-        // getApplicationContext() is provided by the Worker superclass
         Context context = getApplicationContext();
         PrefsManager prefs = new PrefsManager(context);
 
+        // 1. Initial Logic Checks
         // If the user has turned off the VPN filter, don't restart
         if (!prefs.isSafeSearchEnabled()) {
             Log.d(TAG, "VPN filter is off — no restart needed");
             return Result.success();
         }
 
-        // If keep-alive is disabled, skip
+        // If keep-alive is disabled by parent, skip
         if (!prefs.isKeepVpnAlive()) {
             Log.d(TAG, "Keep VPN alive is off — skipping");
             return Result.success();
         }
 
-        // Check if service is already running
-        // Note: Make sure DnsVpnService has a static public boolean or getter for this!
+        // Check if service is already running using the static flag
         if (DnsVpnService.isServiceRunning) {
             Log.d(TAG, "✅ DnsVpnService is running — no action needed");
             return Result.success();
         }
 
+        // 2. State Verification
         // Service is NOT running — check if it was killed unexpectedly
         String lastHeartbeatType = prefs.getLastVpnHeartbeatType();
         Log.d(TAG, "Last heartbeat: " + lastHeartbeatType + " | service running: false");
 
+        // If last recorded state was 'ALIVE' but service isn't running, it was killed
         if (VpnHeartBeatEntity.TYPE_ALIVE.equals(lastHeartbeatType)) {
             Log.w(TAG, "⚠️ VPN was killed unexpectedly — restarting");
             restartVpn(context);
@@ -115,6 +118,9 @@ public class VpnHeartbeatMonitorWorker extends Worker {
         return Result.success();
     }
 
+    /**
+     * Re-launches the DnsVpnService as a Foreground Service.
+     */
     private void restartVpn(Context context) {
         try {
             Intent intent = new Intent(context, DnsVpnService.class);

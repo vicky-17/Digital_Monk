@@ -211,4 +211,18 @@ public class PrefsManager {
     public void setPremiumExpiryEpoch(long value) {
         prefs.edit().putLong(KEY_PREMIUM_EXPIRY, value).apply();
     }
+
+    // Add to PrefsManager.java
+    public boolean isSafeSearchEnabled() {
+        return prefs.getBoolean("safe_search_enabled", false);
+    }
+
+    public void setSafeSearchEnabled(boolean value) {
+        prefs.edit().putBoolean("safe_search_enabled", value).apply();
+    }
+
+    public boolean validatePin(String enteredPin) {
+        String savedPin = getPin(); // Assumes getPin() already exists
+        return enteredPin != null && enteredPin.equals(savedPin);
+    }
 }
