@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ── Network ───────────────────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- ── Boot (declared ONCE) ──────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- ── Foreground services ───────────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- ── Notifications (Android 13+) ──────────────────────────────────── -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ── Special access (granted via system settings) ─────────────────── -->
+    <uses-permission
+            android:name="android.permission.PACKAGE_USAGE_STATS"
+            tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission
+            android:name="android.permission.BIND_VPN_SERVICE"
+            tools:ignore="ProtectedPermissions" />
+
+    <!-- ── Persistence / keep-alive ─────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- ── App inspection ───────────────────────────────────────────────── -->
+    <uses-permission
+            android:name="android.permission.QUERY_ALL_PACKAGES"
+            tools:ignore="QueryAllPackagesPermission" />
+
+    <application
+            android:name=".DigitalMonkApp"
+            android:allowBackup="false"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:supportsRtl="true"
+            android:theme="@style/Theme.DigitalMonk"
+            android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- ── Activities ─────────────────────────────────────────────── -->
+
+        <activity
+                android:name=".ui.dashboard.MainActivity"
+                android:exported="true"
+                android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+                android:name=".ui.auth.PinSetupActivity"
+                android:exported="false" />
+
+        <activity
+                android:name=".ui.onboarding.PermissionSetupActivity"
+                android:exported="false" />
+
+        <!-- ── Accessibility Service ──────────────────────────────────── -->
+
+        <service
+                android:name=".service.accessibility.GuardianAccessibilityService"
+                android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                    android:name="android.accessibilityservice"
+                    android:resource="@xml/accessibility_config" />
+        </service>
+
+        <!-- ── Watchdog Service ───────────────────────────────────────── -->
+        <!--
+            stopWithTask="false": service keeps running even after the user
+            swipes the app from recents.
+        -->
+        <service
+                android:name=".service.WatchdogService"
+                android:foregroundServiceType="specialUse"
+                android:exported="false"
+                android:stopWithTask="false">
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="parental_control_guardian" />
+        </service>
+
+        <!-- ── Watchdog Job Service (JobScheduler backup) ────────────── -->
+        <!--
+            exported="true" + BIND_JOB_SERVICE: required so the system
+            scheduler can bind to it. The permission ensures only the OS can.
+        -->
+        <service
+                android:name=".service.WatchdogJobService"
+                android:permission="android.permission.BIND_JOB_SERVICE"
+                android:exported="true" />
+
+        <!-- ── VPN Service ────────────────────────────────────────────── -->
+
+        <service
+                android:name=".service.vpn.DnsVpnService"
+                android:permission="android.permission.BIND_VPN_SERVICE"
+                android:foregroundServiceType="specialUse"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="dns_filter_for_parental_control" />
+        </service>
+
+        <!-- ── VPN Monitor Service (Layer 3 keep-alive companion) ─────── -->
+        <!--
+            Bound service — runs alongside DnsVpnService.
+            When OEM kills the VPN process, this service's onDestroy() fires,
+            reads the last heartbeat, and restarts DnsVpnService if it was
+            killed unexpectedly (not stopped cleanly by the user).
+            exported="false": only our own app can bind to it.
+        -->
+        <service
+                android:name=".service.vpn.VpnMonitorService"
+                android:exported="false" />
+
+        <!-- ── Overlay Service ────────────────────────────────────────── -->
+
+        <service
+                android:name=".service.overlay.OverlayService"
+                android:foregroundServiceType="specialUse"
+                android:exported="false">
+            <property
+                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                    android:value="overlay_for_parental_control" />
+        </service>
+
+        <!-- ── Device Admin (anti-uninstall) ─────────────────────────── -->
+
+        <receiver
+                android:name=".receiver.MonkDeviceAdminReceiver"
+                android:exported="true"
+                android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                    android:name="android.app.device_admin"
+                    android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── Boot Receiver ─────────────────────────────────────────── -->
+        <!--
+            directBootAware="true": fires even before the user unlocks after reboot.
+            priority="1000": fires before other apps' boot receivers.
+        -->
+        <receiver
+                android:name=".receiver.BootReceiver"
+                android:enabled="true"
+                android:exported="true"
+                android:directBootAware="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── Package Change Receiver ───────────────────────────────── -->
+
+        <receiver
+                android:name=".receiver.PackageChangeReceiver"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── App Update Receiver ───────────────────────────────────── -->
+        <!--
+            Fires after our own APK is updated (Play Store or ADB install).
+            All running services are killed on update — this receiver restarts
+            DnsVpnService and re-schedules the WorkManager watchdog if the
+            VPN filter was active before the update.
+            exported="false": MY_PACKAGE_REPLACED is only sent to our own app,
+            no data scheme needed.
+        -->
+        <receiver
+                android:name=".receiver.AppUpdateReceiver"
+                android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>
