@@ -101,4 +101,8 @@ public class PermissionHelper {
             return true;
         }
     }
+    public static boolean isVpnPermissionGranted(Context context) {
+        // Your logic to check VpnService.prepare(context) == null
+        return android.net.VpnService.prepare(context) == null;
+    }
 }

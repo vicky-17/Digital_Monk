@@ -2,6 +2,7 @@ package com.example.digitalmonk.data.repository;
 
 import com.example.digitalmonk.data.model.UsageLog;
 import java.util.List;
+import com.example.digitalmonk.data.local.db.entity.UsageLogEntity;
 
 /**
  * Why we made this file:
@@ -22,4 +23,5 @@ public interface UsageRepository {
     // void saveDailyUsage(List<UsageLog> logs);
     // List<UsageLog> getUsageForToday();
     // void syncUsageWithRemoteDatabase();
+    List<UsageLogEntity> getAllLogs();
 }

@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -106,7 +106,7 @@ fun ContentFilterScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(modifier = Modifier.padding(16.dp)) {
-                    Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF3B82F6))
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF3B82F6))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         "These filters apply system-wide using a local VPN tunnel.",

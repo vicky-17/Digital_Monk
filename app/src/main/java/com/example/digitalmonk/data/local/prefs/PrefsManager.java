@@ -225,4 +225,11 @@ public class PrefsManager {
         String savedPin = getPin(); // Assumes getPin() already exists
         return enteredPin != null && enteredPin.equals(savedPin);
     }
+    public boolean isYoutubeFilterEnabled() {
+        return prefs.getBoolean("youtube_filter_enabled", false);
+    }
+
+    public void setYoutubeFilterEnabled(boolean value) {
+        prefs.edit().putBoolean("youtube_filter_enabled", value).apply();
+    }
 }
