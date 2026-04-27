@@ -18,10 +18,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.digitalmonk.data.local.prefs.PrefsManager
 
+/**
+ * PinSetupScreen remains in Kotlin.
+ * It calls the Java PrefsManager to save security credentials.
+ */
 @Composable
 fun PinSetupScreen(onPinSaved: () -> Unit) {
     val context = LocalContext.current
+    // Accessing the Java PrefsManager
     val prefs = remember { PrefsManager(context.applicationContext) }
+
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
@@ -34,11 +40,20 @@ fun PinSetupScreen(onPinSaved: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("🔒 Set Parent PIN", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "This PIN protects the parental settings.\nKeep it secret from children.",
-            fontSize = 14.sp, color = Color(0xFF94A3B8), textAlign = TextAlign.Center
+            text = "🔒 Set Parent PIN",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "This PIN protects the parental settings.\nKeep it secret from children.",
+            fontSize = 14.sp,
+            color = Color(0xFF94A3B8),
+            textAlign = TextAlign.Center
         )
 
         Spacer(modifier = Modifier.height(40.dp))
@@ -79,7 +94,11 @@ fun PinSetupScreen(onPinSaved: () -> Unit) {
 
         if (errorMessage.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(errorMessage, color = Color(0xFFEF4444), fontSize = 13.sp)
+            Text(
+                text = errorMessage,
+                color = Color(0xFFEF4444),
+                fontSize = 13.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -90,8 +109,12 @@ fun PinSetupScreen(onPinSaved: () -> Unit) {
                     pin.length < 4 -> errorMessage = "PIN must be at least 4 digits"
                     pin != confirmPin -> errorMessage = "PINs do not match"
                     else -> {
+                        // Persisting data via Java PrefsManager
                         prefs.savePin(pin)
-                        prefs.isSetupComplete = true
+
+                        // Critical: Ensures the App recognizes setup is done
+                        prefs.setSetupComplete(true)
+
                         Toast.makeText(context, "PIN saved ✅", Toast.LENGTH_SHORT).show()
                         onPinSaved()
                     }
@@ -100,7 +123,8 @@ fun PinSetupScreen(onPinSaved: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+            enabled = pin.isNotEmpty() && confirmPin.isNotEmpty()
         ) {
             Text("Save PIN & Continue →", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }

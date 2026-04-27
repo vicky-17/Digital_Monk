@@ -246,8 +246,8 @@ class MainActivity : BaseActivity() {
         val context = LocalContext.current
 
         // ── VPN Settings state ────────────────────────────────────────────────
-        var keepVpnAlive       by remember { mutableStateOf(prefs.keepVpnAlive) }
-        var preventVpnOverride by remember { mutableStateOf(prefs.preventVpnOverride) }
+        var keepVpnAlive       by remember { mutableStateOf(prefs.isKeepVpnAlive) }
+        var preventVpnOverride by remember { mutableStateOf(prefs.isPreventVpnOverride) }
 
         // PIN dialog state for "Prevent VPN Override" disable gate
         var showPinDialog      by remember { mutableStateOf(false) }
@@ -464,7 +464,7 @@ class MainActivity : BaseActivity() {
                             showKeepAliveInfo = true
                         } else {
                             keepVpnAlive = false
-                            prefs.keepVpnAlive = false
+                            prefs.setKeepVpnAlive(false)
                         }
                     }
                 )
@@ -529,7 +529,7 @@ class MainActivity : BaseActivity() {
                 onConfirm = {
                     showKeepAliveInfo = false
                     keepVpnAlive = true
-                    prefs.keepVpnAlive = true
+                    prefs.setKeepVpnAlive(true)
                 },
                 onDismiss = { showKeepAliveInfo = false }
             )
@@ -541,7 +541,7 @@ class MainActivity : BaseActivity() {
                 onConfirm = {
                     showPreventDialog = false
                     preventVpnOverride = true
-                    prefs.preventVpnOverride = true
+                    prefs.setPreventVpnOverride(true)
                 },
                 onDismiss = { showPreventDialog = false }
             )
@@ -556,7 +556,7 @@ class MainActivity : BaseActivity() {
                 onSuccess = {
                     showPinDialog = false
                     preventVpnOverride = false
-                    prefs.preventVpnOverride = false
+                    prefs.setPreventVpnOverride(false)
                 },
                 onDismiss = { showPinDialog = false }
             )
@@ -685,7 +685,7 @@ class MainActivity : BaseActivity() {
         onMenuClick: () -> Unit
     ) {
         val context = LocalContext.current
-        var safeSearchEnabled by remember { mutableStateOf(prefs.safeSearchEnabled) }
+        var safeSearchEnabled by remember { mutableStateOf(prefs.isSafeSearchEnabled) }
         var showAlwaysOnDialog by remember { mutableStateOf(false) }
 
         val vpnPermissionLauncher = rememberLauncherForActivityResult(
@@ -693,11 +693,11 @@ class MainActivity : BaseActivity() {
         ) { result ->
             if (result.resultCode == RESULT_OK) {
                 safeSearchEnabled = true
-                prefs.safeSearchEnabled = true
+                prefs.setSafeSearchEnabled(true)
                 context.startService(Intent(context, DnsVpnService::class.java))
             } else {
                 safeSearchEnabled = false
-                prefs.safeSearchEnabled = false
+                prefs.setSafeSearchEnabled(false)
                 Toast.makeText(context, "VPN Permission is required for Web Filtering", Toast.LENGTH_LONG).show()
             }
         }
@@ -706,7 +706,7 @@ class MainActivity : BaseActivity() {
             ActivityResultContracts.StartActivityForResult()
         ) { onRefresh() }
 
-        var blockShorts by remember { mutableStateOf(prefs.blockShorts) }
+        var blockShorts by remember { mutableStateOf(prefs.isBlockShorts) }
 
         val missingCritical = listOf(
             permissionsState.isAccessibilityOn,
@@ -822,7 +822,7 @@ class MainActivity : BaseActivity() {
                 description = "Blocks YouTube Shorts, Instagram Reels, TikTok",
                 emoji = "📵",
                 isEnabled = blockShorts,
-                onToggle = { blockShorts = it; prefs.blockShorts = it }
+                onToggle = { blockShorts = it; prefs.setBlockShorts(it) }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -839,12 +839,12 @@ class MainActivity : BaseActivity() {
                             vpnPermissionLauncher.launch(vpnIntent)
                         } else {
                             safeSearchEnabled = true
-                            prefs.safeSearchEnabled = true
+                            prefs.setSafeSearchEnabled(true)
                             context.startService(Intent(context, DnsVpnService::class.java))
                         }
                     } else {
                         safeSearchEnabled = false
-                        prefs.safeSearchEnabled = false
+                        prefs.setSafeSearchEnabled(false)
                         val stopIntent = Intent(context, DnsVpnService::class.java).apply {
                             action = DnsVpnService.ACTION_STOP
                         }

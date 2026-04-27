@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -13,6 +14,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
+/**
+ * PinGateScreen remains in Kotlin to support Jetpack Compose.
+ * It observes the AuthViewModel (Kotlin) which communicates with PrefsManager (Java).
+ */
 @Composable
 fun PinGateScreen(viewModel: AuthViewModel, onSuccess: () -> Unit) {
     var enteredPin by remember { mutableStateOf("") }
@@ -21,10 +26,16 @@ fun PinGateScreen(viewModel: AuthViewModel, onSuccess: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center
     ) {
-        Text("Enter PIN")
+        Text(
+            text = "Enter Parent PIN",
+            style = MaterialTheme.typography.headlineSmall
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
+
         OutlinedTextField(
             value = enteredPin,
             onValueChange = {
@@ -44,6 +55,7 @@ fun PinGateScreen(viewModel: AuthViewModel, onSuccess: () -> Unit) {
             ),
             keyboardActions = KeyboardActions(
                 onDone = {
+                    // Calls validatePin which uses Java logic internally
                     if (viewModel.validatePin(enteredPin)) {
                         onSuccess()
                     } else {
@@ -52,7 +64,18 @@ fun PinGateScreen(viewModel: AuthViewModel, onSuccess: () -> Unit) {
                 }
             )
         )
-        Spacer(modifier = Modifier.height(16.dp))
+
+        if (error) {
+            Text(
+                text = "Incorrect PIN. Please try again.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
         Button(
             onClick = {
                 if (viewModel.validatePin(enteredPin)) {
@@ -61,13 +84,10 @@ fun PinGateScreen(viewModel: AuthViewModel, onSuccess: () -> Unit) {
                     enteredPin = ""
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enteredPin.isNotEmpty()
         ) {
             Text("Unlock")
-        }
-        if (error) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Incorrect PIN")
         }
     }
 }
