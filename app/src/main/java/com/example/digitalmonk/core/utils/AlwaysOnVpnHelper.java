@@ -59,7 +59,7 @@ public class AlwaysOnVpnHelper {
         try {
             DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
             ComponentName admin = new ComponentName(context, MonkDeviceAdminReceiver.class);
-            dpm.setAlwaysOnVpnPackage(admin, context.packageName, lockdown);
+            dpm.setAlwaysOnVpnPackage(admin, context.getPackageName(), lockdown);
             Log.i(TAG, "✅ Always-on VPN enabled (lockdown=" + lockdown + ")");
             return true;
         } catch (SecurityException e) {

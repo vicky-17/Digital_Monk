@@ -5,8 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -73,7 +74,7 @@ fun DashboardScreen(
             ActionCard(
                 title = "App Blocking",
                 description = "Restrict specific apps or block YouTube Shorts.",
-                icon = Icons.Default.Apps,
+                icon = Icons.AutoMirrored.Filled.List,
                 onClick = onNavigateToAppBlock
             )
 
@@ -82,7 +83,7 @@ fun DashboardScreen(
             ActionCard(
                 title = "Content Filtering",
                 description = "Manage SafeSearch and DNS level filters.",
-                icon = Icons.Default.Security,
+                icon = Icons.Default.Lock,
                 onClick = onNavigateToContentFilter
             )
 
