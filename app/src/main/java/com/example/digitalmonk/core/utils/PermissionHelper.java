@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.app.AlarmManager;
 
 import androidx.core.content.ContextCompat;
 
@@ -105,4 +106,13 @@ public class PermissionHelper {
         // Your logic to check VpnService.prepare(context) == null
         return android.net.VpnService.prepare(context) == null;
     }
+
+    public static boolean canScheduleExactAlarms(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            return am != null && am.canScheduleExactAlarms();
+        }
+        return true;
+    }
+
 }

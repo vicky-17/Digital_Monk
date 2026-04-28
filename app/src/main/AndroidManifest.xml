@@ -30,6 +30,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <!-- ── App inspection ───────────────────────────────────────────────── -->
     <uses-permission
             android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -200,6 +202,15 @@
                 android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.AlarmRestartReceiver"
+            android:exported="false"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="com.example.digitalmonk.ALARM_RESTART" />
             </intent-filter>
         </receiver>
 

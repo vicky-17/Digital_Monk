@@ -9,6 +9,7 @@ import android.util.Log;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.WatchdogService;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
+import com.example.digitalmonk.core.utils.AlarmScheduler;
 
 /**
  * Why we made this file:
@@ -57,6 +58,8 @@ public class BootReceiver extends BroadcastReceiver {
 
         // 1. Always start WatchdogService — it's the root guardian
         WatchdogService.start(context);
+
+        AlarmScheduler.scheduleRepeating(context);
 
         // 2. Restart VPN if it was active before reboot
         if (prefs.isSafeSearchEnabled()) {

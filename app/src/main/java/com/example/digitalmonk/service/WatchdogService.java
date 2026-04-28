@@ -24,6 +24,7 @@ import com.example.digitalmonk.core.utils.Constants;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
 import com.example.digitalmonk.ui.dashboard.MainActivity;
+import com.example.digitalmonk.core.utils.AlarmScheduler;
 
 /**
  * Why we made this file:
@@ -108,6 +109,7 @@ public class WatchdogService extends Service {
 
         startHealthCheckLoop();
         scheduleJobBackup(this);
+        AlarmScheduler.scheduleRepeating(this);
 
         // START_STICKY: If the OS kills us, restart with a null intent ASAP.
         return START_STICKY;

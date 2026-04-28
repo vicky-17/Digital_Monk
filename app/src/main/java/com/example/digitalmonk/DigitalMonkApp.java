@@ -6,6 +6,7 @@ import android.util.Log;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.WatchdogService;
 import com.example.digitalmonk.service.notification.NotificationChannels;
+import com.example.digitalmonk.core.utils.AlarmScheduler;
 
 /**
  * Why we made this file:
@@ -41,6 +42,7 @@ public class DigitalMonkApp extends Application {
 
             // Start the Foreground Watchdog Service
             WatchdogService.start(this);
+            AlarmScheduler.scheduleRepeating(this);
 
             // Schedule the JobScheduler backup (Layer 4 Resilience)
             WatchdogService.scheduleJobBackup(this);
