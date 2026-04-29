@@ -94,7 +94,8 @@ data class PermissionsState(
     val hasUsageStats: Boolean,
     val hasNotification: Boolean,
     val visitedAutostart: Boolean,
-    val visitedMiuiPower: Boolean
+    val visitedMiuiPower: Boolean,
+    val visitedMiuiBgPopup: Boolean
 )
 
 
@@ -132,7 +133,8 @@ class MainActivity : BaseActivity() {
             hasUsageStats = PersistenceManager.hasUsageStatsPermission(context),
             hasNotification = PermissionHelper.hasNotificationPermission(context),
             visitedAutostart = sharedPrefs.getBoolean("visited_autostart", false),
-            visitedMiuiPower = sharedPrefs.getBoolean("visited_miui_power", false)
+            visitedMiuiPower = sharedPrefs.getBoolean("visited_miui_power", false),
+            visitedMiuiBgPopup = sharedPrefs.getBoolean("visited_miui_bg_popup", false)
         )
     }
 
@@ -416,6 +418,30 @@ class MainActivity : BaseActivity() {
                     isGranted = permissionsState.canDrawOverlays, isCritical = true,
                     onAction = { context.startActivity(PersistenceManager.buildOverlayPermissionIntent(context)) }
                 )
+
+
+
+                // Inside PermissionsSidebar, after the MIUI Power row
+                val isXiaomiSidebar = PersistenceManager.detectOem() == PersistenceManager.OemType.XIAOMI
+                if (isXiaomiSidebar) {
+                    val bgPopupIntent = remember { PersistenceManager.buildMiuiBackgroundPopupIntent(context) }
+                    if (bgPopupIntent != null) {
+                        val prefs2 = remember { context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE) }
+                        SidebarDivider()
+                        SidebarPermissionRow(
+                            emoji = "🪟",
+                            title = "Background Pop-up (MIUI)",
+                            subtitle = "Allow overlay to appear over blocked apps",
+                            isGranted = permissionsState.visitedMiuiBgPopup,
+                            isCritical = true,
+                            onAction = {
+                                prefs2.edit().putBoolean("visited_miui_bg_popup", true).apply()
+                                onRefresh()
+                                context.startActivity(bgPopupIntent)
+                            }
+                        )
+                    }
+                }
 
 
 

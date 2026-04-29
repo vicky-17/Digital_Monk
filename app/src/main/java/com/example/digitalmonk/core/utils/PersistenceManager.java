@@ -168,4 +168,42 @@ public class PersistenceManager {
             return false;
         }
     }
+
+    /**
+     * Checks if "Display pop-up windows while running in background" is granted.
+     * This is a MIUI-specific AppOps permission separate from SYSTEM_ALERT_WINDOW.
+     * We can't reliably check it programmatically on all MIUI versions, so we
+     * track whether the user has visited the settings page (like autostart).
+     */
+    public static Intent buildMiuiBackgroundPopupIntent(Context context) {
+        if (detectOem() != OemType.XIAOMI) return null;
+
+        // Try direct deep-link to MIUI "Other Permissions" page for this app
+        try {
+            Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+            intent.setClassName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.permissions.PermissionsEditorActivity"
+            );
+            intent.putExtra("extra_pkgname", context.getPackageName());
+            if (isIntentResolvable(context, intent)) return intent;
+        } catch (Exception ignored) {}
+
+        // Fallback: open standard App Info screen
+        try {
+            Intent intent = new Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + context.getPackageName())
+            );
+            if (isIntentResolvable(context, intent)) return intent;
+        } catch (Exception ignored) {}
+
+        return null;
+    }
+
+    public static String getMiuiBackgroundPopupInstructions(Context context) {
+        return "App Info → Other Permissions → " +
+                "\"Display pop-up windows while running in background\" → Allow";
+    }
+
 }

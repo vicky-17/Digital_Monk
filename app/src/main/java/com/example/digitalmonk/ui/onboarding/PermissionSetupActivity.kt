@@ -123,6 +123,7 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
     // ── OEM-visited tracking (Rules of Hooks: always called, never inside if) ──
     var userVisitedAutostart by remember { mutableStateOf(prefs.getBoolean("visited_autostart", false)) }
     var visitedMiuiPower     by remember { mutableStateOf(prefs.getBoolean("visited_miui_power", false)) }
+    var visitedMiuiBgPopup by remember { mutableStateOf(prefs.getBoolean("visited_miui_bg_popup", false)) }
 
     val deviceAdminLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -227,6 +228,27 @@ fun PermissionSetupContent(onComplete: () -> Unit) {
                 },
                 actionLabel = "Open MIUI Power Settings"
             )
+
+            val bgPopupIntent = remember { PersistenceManager.buildMiuiBackgroundPopupIntent(context) }
+            if (bgPopupIntent != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                PermissionCard(
+                    emoji = "🪟",
+                    title = "Background Pop-up Windows (MIUI)",
+                    description = "MIUI blocks overlays from apps running in the background by default. " +
+                            "You must manually allow this:\n\n" +
+                            PersistenceManager.getMiuiBackgroundPopupInstructions(context),
+                    isGranted = visitedMiuiBgPopup,
+                    isCritical = true,
+                    onAction = {
+                        prefs.edit().putBoolean("visited_miui_bg_popup", true).apply()
+                        visitedMiuiBgPopup = true
+                        context.startActivity(bgPopupIntent)
+                    },
+                    actionLabel = "Open App Permissions"
+                )
+            }
+
         }
 
         // OEM Autostart card — shown on MIUI, ColorOS, EMUI, etc. (when the screen exists)
