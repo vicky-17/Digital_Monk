@@ -9,6 +9,7 @@ import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.accessibility.handlers.AppBlockHandler;
 import com.example.digitalmonk.service.accessibility.handlers.ShortsBlockHandler;
 // import com.example.digitalmonk.service.accessibility.handlers.ScreenTimeHandler; // Ready for Phase 3
+import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService;
 
 /**
  * Why we made this file:
@@ -29,6 +30,10 @@ import com.example.digitalmonk.service.accessibility.handlers.ShortsBlockHandler
 public class GuardianAccessibilityService extends AccessibilityService {
 
     private static final String TAG = "GuardianService";
+
+    public static volatile long lastEventTimestamp = 0L;
+    public static volatile long serviceConnectedTimestamp = 0L;
+    public static volatile String lastForegroundPackage = null;
 
     // Dependencies
     private PrefsManager prefs;
@@ -54,23 +59,36 @@ public class GuardianAccessibilityService extends AccessibilityService {
         appBlockHandler = new AppBlockHandler(prefs, this::performGlobalAction);
         // screenTimeHandler = new ScreenTimeHandler(prefs, this::performGlobalAction);
 
+        serviceConnectedTimestamp = System.currentTimeMillis();
+        lastEventTimestamp = 0L; // reset so health checker starts fresh
+
         Log.i(TAG, "Guardian service connected ✅");
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+
+        GuardianAccessibilityService.lastEventTimestamp = System.currentTimeMillis();
+
         // Safe check
         if (event == null) return;
 
         // We only care about events where the window state or content changes
         int eventType = event.getEventType();
+        CharSequence pkgSequence = event.getPackageName();
+
+        // 4. Now use them to update the last foreground package
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSequence != null) {
+            GuardianAccessibilityService.lastForegroundPackage = pkgSequence.toString();
+        }
+
+
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
                 eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             return;
         }
 
         // Extract the package name safely
-        CharSequence pkgSequence = event.getPackageName();
         if (pkgSequence == null) return;
         String pkg = pkgSequence.toString();
 
@@ -81,20 +99,16 @@ public class GuardianAccessibilityService extends AccessibilityService {
 
         AccessibilityNodeInfo root = getRootInActiveWindow();
 
-        // ── Dispatch to all handlers ─────────────────────────────────────────
-        // Each handler decides internally whether to act based on PrefsManager
-
         shortsBlockHandler.handle(root, pkg);
         appBlockHandler.handle(root, pkg);
 
-        // Example for Phase 3:
-        // if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-        //     screenTimeHandler.onAppChanged(pkg);
-        // }
     }
 
     @Override
     public void onInterrupt() {
+        lastEventTimestamp = 0L; // mark as potentially broken
+
         Log.w(TAG, "Service interrupted");
     }
+
 }

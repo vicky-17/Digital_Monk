@@ -144,6 +144,15 @@
                     android:value="overlay_for_parental_control" />
         </service>
 
+        <service
+            android:name=".service.overlay.GuardianOverlayService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="accessibility_guardian_overlay" />
+        </service>
+
         <!-- ── Device Admin (anti-uninstall) ─────────────────────────── -->
 
         <receiver

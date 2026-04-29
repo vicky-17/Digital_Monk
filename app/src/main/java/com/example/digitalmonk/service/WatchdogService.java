@@ -25,6 +25,10 @@ import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
 import com.example.digitalmonk.ui.dashboard.MainActivity;
 import com.example.digitalmonk.core.utils.AlarmScheduler;
+import com.example.digitalmonk.core.utils.AccessibilityHealthChecker;
+import com.example.digitalmonk.service.overlay.GuardianOverlayService;
+
+
 
 /**
  * Why we made this file:
@@ -172,7 +176,7 @@ public class WatchdogService extends Service {
     private void performHealthCheck() {
         Log.d(TAG, "🔍 Health check running...");
 
-        // If VPN should be on but isn't, revive it
+        // Existing VPN check
         if (prefs.isSafeSearchEnabled() && !DnsVpnService.isServiceRunning) {
             Log.w(TAG, "⚠️ DnsVpnService is dead — restarting");
             try {
@@ -185,6 +189,19 @@ public class WatchdogService extends Service {
             } catch (Exception e) {
                 Log.e(TAG, "Failed to restart DnsVpnService", e);
             }
+        }
+
+        // ── NEW: Accessibility health check ───────────────────────────────────────
+        boolean needsLockdown = AccessibilityHealthChecker.needsLockdown(this);
+        boolean overlayAlreadyShowing = GuardianOverlayService.isRunning;
+
+        if (needsLockdown && !overlayAlreadyShowing) {
+            Log.w(TAG, "⚠️ Accessibility unhealthy — triggering lockdown overlay");
+            boolean isFrozen = AccessibilityHealthChecker.isFrozen(this);
+            GuardianOverlayService.start(this, isFrozen);
+        } else if (!needsLockdown && overlayAlreadyShowing) {
+            // Accessibility recovered — dismiss
+            GuardianOverlayService.stop(this);
         }
     }
 

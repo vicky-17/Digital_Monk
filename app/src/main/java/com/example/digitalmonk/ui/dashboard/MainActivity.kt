@@ -68,6 +68,12 @@ import com.example.digitalmonk.ui.auth.PinGateScreen
 import com.example.digitalmonk.ui.auth.PinSetupActivity
 import com.example.digitalmonk.ui.components.common.SectionLabel
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
+import com.example.digitalmonk.core.utils.AccessibilityHealthChecker
+import com.example.digitalmonk.service.overlay.GuardianOverlayService
+
+
+
+
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 private val BgDeep       = Color(0xFF080E1A)
@@ -194,7 +200,17 @@ class MainActivity : BaseActivity() {
 
         DisposableEffect(lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) refreshKey = System.currentTimeMillis()
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    refreshKey = System.currentTimeMillis()
+
+                    // ── Accessibility lockdown check on every resume ──
+                    val needsLockdown = AccessibilityHealthChecker.needsLockdown(context)
+                    val overlayShowing = GuardianOverlayService.isRunning
+                    if (needsLockdown && !overlayShowing) {
+                        val isFrozen = AccessibilityHealthChecker.isFrozen(context)
+                        GuardianOverlayService.start(context, isFrozen)
+                    }
+                }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
