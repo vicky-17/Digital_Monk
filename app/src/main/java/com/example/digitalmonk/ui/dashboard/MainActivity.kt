@@ -92,7 +92,9 @@ data class PermissionsState(
     val canDrawOverlays: Boolean,
     val isDeviceAdmin: Boolean,
     val hasUsageStats: Boolean,
-    val hasNotification: Boolean
+    val hasNotification: Boolean,
+    val visitedAutostart: Boolean,
+    val visitedMiuiPower: Boolean
 )
 
 
@@ -120,13 +122,17 @@ class MainActivity : BaseActivity() {
     }
 
     private fun getPermissionsState(context: android.content.Context): PermissionsState {
+        val sharedPrefs = context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE)
+
         return PermissionsState(
             isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context),
             isBatteryExempt = PersistenceManager.isBatteryOptimizationDisabled(context),
             canDrawOverlays = PersistenceManager.canDrawOverlays(context),
             isDeviceAdmin = MonkDeviceAdminReceiver.isAdminActive(context),
             hasUsageStats = PersistenceManager.hasUsageStatsPermission(context),
-            hasNotification = PermissionHelper.hasNotificationPermission(context)
+            hasNotification = PermissionHelper.hasNotificationPermission(context),
+            visitedAutostart = sharedPrefs.getBoolean("visited_autostart", false),
+            visitedMiuiPower = sharedPrefs.getBoolean("visited_miui_power", false)
         )
     }
 
@@ -264,15 +270,19 @@ class MainActivity : BaseActivity() {
             ActivityResultContracts.StartActivityForResult()
         ) { onRefresh() }
 
+        val hasOemAutostart = PersistenceManager.hasOemAutostartSetting(context)
         val grantedCount = listOf(
             permissionsState.isAccessibilityOn,
             permissionsState.isBatteryExempt,
             permissionsState.canDrawOverlays,
             permissionsState.isDeviceAdmin,
             permissionsState.hasUsageStats,
-            permissionsState.hasNotification
+            permissionsState.hasNotification,
+            // If device needs Autostart, check if they visited it; otherwise, count as 'true'
+            if (hasOemAutostart) permissionsState.visitedAutostart else true
         ).count { it }
-        val totalCount = 6
+
+        val totalCount = if (hasOemAutostart) 7 else 6
 
         Box(
             modifier = Modifier
@@ -406,6 +416,10 @@ class MainActivity : BaseActivity() {
                     isGranted = permissionsState.canDrawOverlays, isCritical = true,
                     onAction = { context.startActivity(PersistenceManager.buildOverlayPermissionIntent(context)) }
                 )
+
+
+
+
 
                 Spacer(Modifier.height(16.dp))
 
@@ -810,6 +824,56 @@ class MainActivity : BaseActivity() {
                     }
                 }
             )
+
+
+
+            // ── NEW OEM Autostart Logic Start ──────────────────────────
+            val hasOemAutostart = remember { PersistenceManager.hasOemAutostartSetting(context) }
+            if (hasOemAutostart) {
+                Spacer(modifier = Modifier.height(10.dp))
+                val oemIntent = remember { PersistenceManager.buildAutostartIntent(context) }
+                val prefs2 = remember { context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE) }
+
+                StatusCard(
+                    title = "Background Autostart (${android.os.Build.MANUFACTURER})",
+                    description = if (permissionsState.visitedAutostart)
+                        "Visited — make sure Digital Monk is toggled ON"
+                    else
+                        "Required on ${android.os.Build.MANUFACTURER} — prevents app from being killed",
+                    isActive = permissionsState.visitedAutostart,
+                    onClick = {
+                        prefs2.edit().putBoolean("visited_autostart", true).apply()
+                        onRefresh()
+                        oemIntent?.let { context.startActivity(it) }
+                    }
+                )
+            }
+
+            val isXiaomi = remember { PersistenceManager.detectOem() == PersistenceManager.OemType.XIAOMI }
+            if (isXiaomi) {
+                val miuiPowerIntent = remember { PersistenceManager.buildMiuiPowerKeeperIntent(context) }
+                if (miuiPowerIntent != null) {
+                    val prefs2 = remember { context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE) }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    StatusCard(
+                        title = "MIUI Power Saver",
+                        description = if (permissionsState.visitedMiuiPower)
+                            "Visited — ensure set to 'No Restrictions'"
+                        else
+                            "Second battery manager — must whitelist app here",
+                        isActive = permissionsState.visitedMiuiPower,
+                        onClick = {
+                            prefs2.edit().putBoolean("visited_miui_power", true).apply()
+                            onRefresh()
+                            context.startActivity(miuiPowerIntent)
+                        }
+                    )
+                }
+            }
+            // ── NEW OEM Autostart Logic End ────────────────────────────
+
+
+
 
             Spacer(modifier = Modifier.height(24.dp))
 
