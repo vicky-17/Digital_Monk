@@ -1,106 +1,140 @@
 package com.example.digitalmonk.service.accessibility.detectors;
 
 import android.view.accessibility.AccessibilityNodeInfo;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
- * Specialized detector to identify Android Settings pages that allow
- * a user to uninstall the app or deactivate Device Admin privileges.
+ * Precisely detects Android Settings pages that can uninstall or deactivate Digital Monk.
+ *
+ * DETECTION STRATEGY (from screenshots):
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Page 1 — App Info (com.miui.securitycenter or com.android.settings):
+ *   Condition: Page title contains "App info" AND "Digital Monk" is visible
+ *              AND bottom bar has "Force stop" or "Uninstall" buttons.
+ *
+ * Page 2 — Device Admin (com.android.settings):
+ *   Condition: Page title contains "Device admin app" AND "Digital Monk" is visible
+ *              AND "Deactivate & uninstall" button is present.
+ *
+ * PERFORMANCE RULES (fixes ANR / "app not responding"):
+ *   1. Package gate first  — bail instantly if not a settings package.
+ *   2. Use findAccessibilityNodeInfosByText() — system-indexed, NOT manual recursion.
+ *   3. ALL 4 conditions must pass — eliminates false positives.
+ *   4. Zero manual tree recursion — no depth loops anywhere.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 public class UninstallerDetector {
 
-    // ── Settings packages that attempt to expose uninstall / deactivate ──────
-    private static final Set<String> DANGEROUS_SETTINGS_PACKAGES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "com.miui.securitycenter",       // MIUI App Info (has Uninstall button)
-            "com.android.settings",          // Stock Android Settings
-            "com.google.android.settings"    // Pixel/Pure Android Settings
-    )));
+    // ── Packages that host dangerous pages ───────────────────────────────────
+    private static final Set<String> SETTINGS_PACKAGES = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "com.miui.securitycenter",    // MIUI App Info
+                    "com.android.settings",       // Stock / MIUI Settings
+                    "com.google.android.settings" // Pixel Settings
+            ))
+    );
 
-    // Screen titles/content keywords that indicate a dangerous action is possible
-    private static final Set<String> DANGEROUS_SCREEN_KEYWORDS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "uninstall",
-            "deactivate",
-            "clear data",
-            "force stop",
-            "remove device admin"
-    )));
+    // ── Exact button texts that signal a dangerous action ─────────────────────
+    // Matches the bottom-bar buttons seen in the screenshots exactly.
+    private static final Set<String> DANGER_BUTTON_TEXTS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "Force stop",             // App Info bottom bar (screenshot 1)
+                    "Uninstall",              // App Info bottom bar (screenshot 1)
+                    "Deactivate & uninstall"  // Device Admin page   (screenshot 2)
+            ))
+    );
 
-    // FIXED: Constructor name must match the Class name
+    // ── Page-level title anchors ──────────────────────────────────────────────
+    // Confirmed from the two screenshots.
+    private static final Set<String> DANGEROUS_PAGE_TITLES = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "App info",          // Screenshot 1 top-bar title
+                    "Device admin app"   // Screenshot 2 top-bar title
+            ))
+    );
+
     private UninstallerDetector() {}
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // PUBLIC API
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Checks if the current screen is a settings page that could lead to app removal.
+     * Returns true ONLY when ALL FOUR conditions are met:
+     *   1. We are inside a known settings package
+     *   2. The page title is "App info" or "Device admin app"
+     *   3. "Digital Monk" text is visible on screen
+     *   4. A dangerous action button is present (Force stop / Uninstall / Deactivate & uninstall)
+     *
+     * This strict 4-gate approach prevents the overlay from showing on any
+     * other settings page or during normal app usage.
      */
-    public static boolean isDangerousSettingsPage(AccessibilityNodeInfo rootNode, String packageName) {
-        if (packageName == null) return false;
-        if (!DANGEROUS_SETTINGS_PACKAGES.contains(packageName)) return false;
+    public static boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName) {
 
-        if (rootNode == null) return false;
-
-        // Check if the current settings page is actually for OUR app
-        boolean isOurAppPage = containsText(rootNode, "Digital Monk");
-
-        // Only proceed to check for dangerous buttons if we are on the Digital Monk page
-        if (isOurAppPage) {
-            return containsDangerousText(rootNode);
+        // ── Gate 1: Package check (cheapest, do first) ────────────────────────
+        if (packageName == null || !SETTINGS_PACKAGES.contains(packageName)) {
+            return false;
         }
 
+        // ── Gate 2: Root node check ───────────────────────────────────────────
+        if (root == null) {
+            return false;
+        }
+
+        // ── Gate 3: Confirm page title ────────────────────────────────────────
+        // findAccessibilityNodeInfosByText() uses the AT system's node index.
+        // It is O(log n) and does NOT block the main thread like manual recursion.
+        if (!hasAnyText(root, DANGEROUS_PAGE_TITLES)) {
+            return false;
+        }
+
+        // ── Gate 4: "Digital Monk" must be on screen ──────────────────────────
+        if (!hasExactText(root, "Digital Monk")) {
+            return false;
+        }
+
+        // ── Gate 5: A danger button must be visible ───────────────────────────
+        return hasAnyText(root, DANGER_BUTTON_TEXTS);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVATE HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns true if ANY string from the given set is found on screen.
+     * Uses the system-indexed findAccessibilityNodeInfosByText() — fast and safe.
+     */
+    private static boolean hasAnyText(AccessibilityNodeInfo root, Set<String> candidates) {
+        for (String candidate : candidates) {
+            if (hasExactText(root, candidate)) {
+                return true;
+            }
+        }
         return false;
     }
 
     /**
-     * Helper to check if a specific string (like our App Name) exists in the UI tree.
+     * Checks whether the given text appears anywhere in the current window.
+     *
+     * Note: findAccessibilityNodeInfosByText() does a SUBSTRING match internally,
+     * so "App info" will also match "App information". This is fine for our use
+     * case since these page titles are very specific.
+     *
+     * Wraps in try/catch because AT nodes can be recycled mid-call on MIUI.
      */
-    private static boolean containsText(AccessibilityNodeInfo node, String target) {
-        if (node == null) return false;
-
-        CharSequence text = node.getText();
-        if (text != null && text.toString().equalsIgnoreCase(target)) {
-            return true;
+    private static boolean hasExactText(AccessibilityNodeInfo root, String text) {
+        try {
+            if (root == null || text == null) return false;
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
+            return nodes != null && !nodes.isEmpty();
+        } catch (Exception e) {
+            return false;
         }
-
-        for (int i = 0; i < node.getChildCount(); i++) {
-            if (containsText(node.getChild(i), target)) return true;
-        }
-        return false;
-    }
-
-    private static boolean containsDangerousText(AccessibilityNodeInfo node) {
-        if (node == null) return false;
-
-        // Check primary text
-        CharSequence text = node.getText();
-        if (text != null) {
-            String lower = text.toString().toLowerCase();
-            for (String keyword : DANGEROUS_SCREEN_KEYWORDS) {
-                if (lower.contains(keyword)) return true;
-            }
-        }
-
-        // Check content descriptions (often used for headers/icons)
-        CharSequence desc = node.getContentDescription();
-        if (desc != null) {
-            String lower = desc.toString().toLowerCase();
-            for (String keyword : DANGEROUS_SCREEN_KEYWORDS) {
-                if (lower.contains(keyword)) return true;
-            }
-        }
-
-        // Recurse through children
-        for (int i = 0; i < node.getChildCount(); i++) {
-            AccessibilityNodeInfo child = node.getChild(i);
-            try {
-                if (containsDangerousText(child)) return true;
-            } finally {
-                // Important: node info objects must be recycled in a real service,
-                // but since we are traversing a tree passed by the service,
-                // we just ensure we don't crash.
-            }
-        }
-
-        return false;
     }
 }
