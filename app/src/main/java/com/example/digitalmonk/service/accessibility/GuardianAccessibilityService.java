@@ -6,10 +6,12 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
+import com.example.digitalmonk.service.accessibility.detectors.UninstallerDetector;
 import com.example.digitalmonk.service.accessibility.handlers.AppBlockHandler;
 import com.example.digitalmonk.service.accessibility.handlers.ShortsBlockHandler;
 // import com.example.digitalmonk.service.accessibility.handlers.ScreenTimeHandler; // Ready for Phase 3
 import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService;
+import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 
 /**
  * Why we made this file:
@@ -83,6 +85,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
         }
 
 
+        // Optimization: Only process major UI changes to save CPU and prevent flickering
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
                 eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             return;
@@ -100,7 +103,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
 
         shortsBlockHandler.handle(root, pkg);
-        appBlockHandler.handle(root, pkg);
+        appBlockHandler.handle(root, pkg, getApplicationContext());
 
     }
 

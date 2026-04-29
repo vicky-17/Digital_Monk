@@ -153,6 +153,16 @@
                 android:value="accessibility_guardian_overlay" />
         </service>
 
+        <!-- ── Settings Block Overlay (anti-uninstall page blocker) ──────────── -->
+        <service
+            android:name=".service.overlay.SettingsBlockOverlayService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="settings_page_block_overlay" />
+        </service>
+
         <!-- ── Device Admin (anti-uninstall) ─────────────────────────── -->
 
         <receiver
