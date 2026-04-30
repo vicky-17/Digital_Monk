@@ -133,6 +133,7 @@ public class WatchdogService extends Service {
             public void onSettingsOpened(String packageName) {
                 // Initial entry into Settings shows the standard 100dp protection bar
                 SettingsBlockOverlayService.showBottom(WatchdogService.this);
+                if (settingsPageReader != null) settingsPageReader.reset();
             }
 
             @Override

@@ -77,14 +77,22 @@ public class SettingsBlockOverlayService extends Service {
     private View          overlayView;        // single view; we animate its height
     private WindowManager.LayoutParams overlayParams;
 
+    // ── NEW: Transparent full-screen touch blocker ────────────────────────────
+    // Sits behind the animated overlay. Consumes ALL taps during the shrink
+    // animation so the uninstall button can never be reached mid-frame.
+    private View touchBlockerView;
+    private WindowManager.LayoutParams touchBlockerParams;
+
     private Handler mainHandler;
 
     private int screenWidth;
     private int screenHeight;
 
-    private static final int BOTTOM_BLOCKER_DP  = 100;  // covers action buttons area
-    private static final int EXPLORING_SHRINK_DP = 50;  // Other details/non-critical pages
-    private static final int DELAY_EXPLORING_MS = 5000; // Your requested 5-second delay
+    private static final int INITIAL_BLOCKER_DP  = 650;  // covers action buttons area
+    private static final int EXPLORING_SHRINK_DP = 80;  // Other details/non-critical pages
+
+
+    private static final int DELAY_EXPLORING_MS = 2000; // Your requested 5-second delay
     private static final int ANIMATE_DURATION_MS = 350;
 
     // ── Static helpers ────────────────────────────────────────────────────────
@@ -133,11 +141,30 @@ public class SettingsBlockOverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) return START_NOT_STICKY;
+        if (intent == null) {
+            // Called after system restart — just stop cleanly
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
         String action = intent.getAction();
+
+        // ── CRITICAL FIX: Call startForeground() immediately ─────────────────
+        // Android demands this within 5s of startForegroundService().
+        // We must call it even if we're about to stop, then call stopForeground().
+        try {
+            startForeground(Constants.NOTIFICATION_ID_SETTINGS_BLOCK, buildNotification());
+        } catch (Exception e) {
+            Log.e(TAG, "startForeground failed", e);
+        }
 
         // If we are in Full Overlay, we stay there until "Go Home" is clicked
         if (isFullOverlay && !ACTION_HIDE.equals(action)) {
+            return START_NOT_STICKY;
+        }
+
+        if (action == null) {
+            stopSelf();
             return START_NOT_STICKY;
         }
 
@@ -147,7 +174,7 @@ public class SettingsBlockOverlayService extends Service {
                 if (!isRunning) { // Only start if not already running
                     isRunning = true;
                     // Transition to the 100dp standard bottom overlay
-                    mainHandler.post(() -> animateToHeight(BOTTOM_BLOCKER_DP, false));
+                    mainHandler.post(() -> animateToHeight(INITIAL_BLOCKER_DP, false));
                 }
                 break;
 
@@ -170,6 +197,7 @@ public class SettingsBlockOverlayService extends Service {
                 Log.d("MONK_DEBUG", "OverlayService: Executing ACTION_HIDE. Removing view now.");
                 mainHandler.post(() -> {
                     removeOverlay();
+                    stopForeground(true);
                     stopSelf();
                     isRunning = false;
                     isFullOverlay = false;
@@ -187,6 +215,7 @@ public class SettingsBlockOverlayService extends Service {
     public void onDestroy() {
         super.onDestroy();
         mainHandler.removeCallbacksAndMessages(null);
+        removeTouchBlocker();
         removeOverlay();
         isRunning     = false;
         isFullOverlay = false;
@@ -205,7 +234,7 @@ public class SettingsBlockOverlayService extends Service {
         }
 
         float density    = getResources().getDisplayMetrics().density;
-        int   bottomH    = (int)(BOTTOM_BLOCKER_DP * density);
+        int   bottomH    = (int)(INITIAL_BLOCKER_DP * density);
 
         if (overlayView == null) {
             // First time — create the view and add it
@@ -264,7 +293,7 @@ public class SettingsBlockOverlayService extends Service {
         }
 
         float density = getResources().getDisplayMetrics().density;
-        int   startH  = (int)(BOTTOM_BLOCKER_DP * density);
+        int   startH  = (int)(INITIAL_BLOCKER_DP * density);
         int   endH    = screenHeight;
 
         android.animation.ValueAnimator anim =
@@ -302,26 +331,52 @@ public class SettingsBlockOverlayService extends Service {
      * Generic height animator for Bottom/Exploring states.
      */
     private void animateToHeight(int targetDp, boolean enableTouch) {
+        // Ensure touch blocker is active before we start shrinking
+        addTouchBlocker();
+
         if (overlayView == null) {
             applyBottomOverlay(); // Fallback to create view
+            removeTouchBlocker(); // nothing to animate, remove immediately
             return;
         }
 
         float density = getResources().getDisplayMetrics().density;
+        int startH = overlayParams.height;
         int endH = (int) (targetDp * density);
 
-        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofInt(overlayParams.height, endH);
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofInt(startH, endH);
         anim.setDuration(ANIMATE_DURATION_MS);
         anim.setInterpolator(new DecelerateInterpolator());
+
         anim.addUpdateListener(a -> {
             if (overlayView == null) return;
             overlayParams.height = (int) a.getAnimatedValue();
-            // Standard flags for bottom overlays
-            overlayParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
+            overlayParams.x       = 0;
+            overlayParams.y       = 0; // ← LOCK: bottom edge never moves
+            overlayParams.flags   = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                     | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
-            try { windowManager.updateViewLayout(overlayView, overlayParams); } catch (Exception ignored) {}
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS; // ← prevents system shift
+            try { windowManager.updateViewLayout(overlayView, overlayParams); }
+            catch (Exception ignored) {}
         });
+
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                // ← KEY FIX: release the touch blocker now that animation is settled
+                removeTouchBlocker();
+                Log.i(TAG, "🔓 Touch blocker released after animation settled");
+            }
+
+            @Override
+            public void onAnimationCancel(android.animation.Animator animation) {
+                // Also release if animation is interrupted (e.g. ACTION_HIDE mid-flight)
+                removeTouchBlocker();
+            }
+        });
+
         anim.start();
     }
 
@@ -352,6 +407,7 @@ public class SettingsBlockOverlayService extends Service {
     }
 
     private void removeOverlay() {
+        removeTouchBlocker(); // ← remove blocker first
         if (overlayView != null && windowManager != null) {
             try { windowManager.removeView(overlayView); } catch (Exception ignored) {}
             overlayView = null;
@@ -461,6 +517,52 @@ public class SettingsBlockOverlayService extends Service {
         root.addView(homeBtn, btnLp);
 
         return root;
+    }
+
+
+
+
+    /**
+     * Adds an invisible full-screen view that eats all touch events.
+     * This is the KEY FIX: during height animation the visible overlay shrinks,
+     * but this blocker stays full-screen so the uninstall button is NEVER reachable.
+     */
+    private void addTouchBlocker() {
+        if (touchBlockerView != null) return; // already added
+        if (!Settings.canDrawOverlays(this)) return;
+
+        touchBlockerParams = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                // NOT_TOUCH_MODAL is intentionally absent — we WANT to intercept all touches
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+        );
+        touchBlockerParams.gravity = Gravity.BOTTOM | Gravity.START;
+        touchBlockerParams.x = 0;
+        touchBlockerParams.y = 0;
+
+        touchBlockerView = new View(this);
+        touchBlockerView.setBackgroundColor(Color.TRANSPARENT);
+        // Consume every touch silently
+        touchBlockerView.setOnTouchListener((v, event) -> true);
+
+        try {
+            windowManager.addView(touchBlockerView, touchBlockerParams);
+            Log.i(TAG, "🛡️ Touch blocker added");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to add touch blocker", e);
+            touchBlockerView = null;
+        }
+    }
+
+    private void removeTouchBlocker() {
+        if (touchBlockerView != null && windowManager != null) {
+            try { windowManager.removeView(touchBlockerView); } catch (Exception ignored) {}
+            touchBlockerView = null;
+        }
     }
 
     // ── Notification ──────────────────────────────────────────────────────────

@@ -46,6 +46,8 @@ public class SettingsPageReader {
     /** Prevents repeated expand/shrink calls on the same page. */
     private boolean lastResultWasDangerous = false;
 
+    private boolean shrinkScheduled = false;
+
     /** Prevents reading when accessibility just restarted (gives it 20s grace). */
     private static final long ACCESSIBILITY_GRACE_MS = 20_000L;
 
@@ -104,11 +106,17 @@ public class SettingsPageReader {
             Log.d("MONK_DEBUG", "PageReader: Dangerous page! Expanding to FULL.");
             Log.w(TAG, "🚨 Dangerous page detected — expanding to full overlay");
             lastResultWasDangerous = true;
+            shrinkScheduled = false;  // cancel any pending shrink intent
             SettingsBlockOverlayService.expandFull(context);
 
         } else if (!isDangerous && lastResultWasDangerous) {  // add && lastResultWasDangerous
             Log.d("MONK_DEBUG", "PageReader: Safe page. Shrinking to 50dp.");
             lastResultWasDangerous = false;
+            shrinkScheduled = false;
+            SettingsBlockOverlayService.shrinkToBottom(context);
+        }else if (!isDangerous && !shrinkScheduled && SettingsBlockOverlayService.isRunning) {
+            // Safe page — schedule shrink once, don't repeat
+            shrinkScheduled = true;
             SettingsBlockOverlayService.shrinkToBottom(context);
         }
     }
@@ -118,6 +126,7 @@ public class SettingsPageReader {
      */
     public void reset() {
         lastResultWasDangerous = false;
+        shrinkScheduled = false;
     }
 
     // ── Accessibility root retrieval ──────────────────────────────────────────
