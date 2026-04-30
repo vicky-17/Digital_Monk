@@ -137,23 +137,18 @@ public class WatchdogService extends Service {
 
             @Override
             public void onSettingsClosed() {
-                // Add a small delay and double-check focus before hiding
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    // Double-check with the monitor to see if it's still closed
-                    settingsMonitor.poll();
 
                     if (!settingsMonitor.isSettingsOpen()) {
                         Log.d("MONK_DEBUG", "Watchdog: Confirmed settings closed. Triggering HIDE.");
-
                         if (!SettingsBlockOverlayService.isFullOverlay) {
                             SettingsBlockOverlayService.hide(WatchdogService.this);
                         }
-
                         if (settingsPageReader != null) {
                             settingsPageReader.reset();
                         }
                     } else {
-                        Log.d("MONK_DEBUG", "Watchdog: Ignored false 'closed' event - still in settings.");
+                        Log.d("MONK_DEBUG", "Watchdog: Ignored false closed event - still in settings.");
                     }
                 }, 500); // 500ms delay to account for page transition "flicker"
             }
