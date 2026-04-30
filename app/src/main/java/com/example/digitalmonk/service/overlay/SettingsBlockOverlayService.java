@@ -7,16 +7,17 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
-import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
+import android.view.animation.DecelerateInterpolator;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -27,10 +28,30 @@ import com.example.digitalmonk.R;
 import com.example.digitalmonk.core.utils.Constants;
 
 /**
- * FAST DUAL-OVERLAY Anti-Uninstall System
+ * SettingsBlockOverlayService — Restructured for UsageStats-driven detection
  * ─────────────────────────────────────────────────────────────────────────────
- * Layer 1 — BOTTOM BLOCKER (instant, on settings package open)
- * Layer 2 — FULL SCREEN BLOCK (after 4-gate confirmation)
+ *
+ * NEW ARCHITECTURE (no accessibility dependency):
+ * ─────────────────────────────────────────────────────────────────────────────
+ * STATE MACHINE:
+ *   HIDDEN   → settings package detected by WatchdogService   → BOTTOM_ONLY
+ *   BOTTOM_ONLY → uninstaller page confirmed by page reader   → FULL_SCREEN
+ *   FULL_SCREEN → safe page detected (not uninstaller)        → BOTTOM_ONLY
+ *   BOTTOM_ONLY / FULL_SCREEN → settings app closed           → HIDDEN (via WatchdogService)
+ *
+ * KEY CHANGES vs old version:
+ *   1. NO auto-timeout. Overlay is NEVER automatically removed.
+ *      Only WatchdogService can hide it when settings is confirmed closed.
+ *   2. Two-layer overlay:
+ *      - Bottom blocker: 200dp tall, covers action buttons area (Force stop / Uninstall / Deactivate)
+ *      - Full overlay: expands to fill entire screen when uninstaller page confirmed
+ *   3. Height animation from bottom layer to full screen (smooth expansion)
+ *   4. Expansion direction: grows UPWARD from bottom — natural since bottom bar is already there
+ *   5. Separate MIUI path: detects com.miui.securitycenter and applies same logic
+ *
+ * THREAD SAFETY:
+ *   All WindowManager operations are dispatched to the Main thread via Handler.
+ *   State flags (isRunning, isFullOverlay) are volatile for cross-thread reads.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 public class SettingsBlockOverlayService extends Service {
@@ -38,41 +59,62 @@ public class SettingsBlockOverlayService extends Service {
     private static final String TAG = "SettingsBlockOverlay";
 
     // ── Intent actions ────────────────────────────────────────────────────────
-    public static final String ACTION_SHOW_INSTANT = "ACTION_SETTINGS_BLOCK_INSTANT";
-    public static final String ACTION_SHOW_FULL    = "ACTION_SETTINGS_BLOCK_SHOW";
+    /** Show the bottom-only blocker (settings opened) */
+    public static final String ACTION_SHOW_BOTTOM  = "ACTION_SETTINGS_BLOCK_BOTTOM";
+    /** Expand to full screen (uninstaller page confirmed) */
+    public static final String ACTION_SHOW_FULL    = "ACTION_SETTINGS_BLOCK_FULL";
+    /** Shrink back to bottom-only (non-dangerous page) */
+    public static final String ACTION_SHRINK_BOTTOM = "ACTION_SETTINGS_BLOCK_SHRINK";
+    /** Hide everything (settings closed) */
     public static final String ACTION_HIDE         = "ACTION_SETTINGS_BLOCK_HIDE";
 
-    // ── State ─────────────────────────────────────────────────────────────────
+    // ── Public state — read by WatchdogService & AppBlockHandler ─────────────
     public static volatile boolean isRunning     = false;
     public static volatile boolean isFullOverlay = false;
 
+    // ── Internal state ────────────────────────────────────────────────────────
     private WindowManager windowManager;
-    private View bottomBlockerView;
-    private View fullOverlayView;
+    private View          overlayView;        // single view; we animate its height
+    private WindowManager.LayoutParams overlayParams;
 
-    private Handler handler;
+    private Handler mainHandler;
+
     private int screenWidth;
     private int screenHeight;
 
+    private static final int BOTTOM_BLOCKER_DP  = 100;  // covers action buttons area
+    private static final int EXPLORING_SHRINK_DP = 50;  // Other details/non-critical pages
+    private static final int DELAY_EXPLORING_MS = 5000; // Your requested 5-second delay
+    private static final int ANIMATE_DURATION_MS = 350;
+
     // ── Static helpers ────────────────────────────────────────────────────────
 
-    public static void showInstant(Context context) {
-        if (isRunning) return;
-        Intent intent = new Intent(context, SettingsBlockOverlayService.class);
-        intent.setAction(ACTION_SHOW_INSTANT);
-        context.startForegroundService(intent);
+    /** Called by WatchdogService when it detects settings is open */
+    public static void showBottom(Context context) {
+        Intent i = new Intent(context, SettingsBlockOverlayService.class);
+        i.setAction(ACTION_SHOW_BOTTOM);
+        context.startForegroundService(i);
     }
 
-    public static void show(Context context) {
-        Intent intent = new Intent(context, SettingsBlockOverlayService.class);
-        intent.setAction(ACTION_SHOW_FULL);
-        context.startForegroundService(intent);
+    /** Called by page reader when uninstaller page confirmed */
+    public static void expandFull(Context context) {
+        Intent i = new Intent(context, SettingsBlockOverlayService.class);
+        i.setAction(ACTION_SHOW_FULL);
+        context.startForegroundService(i);
     }
 
+    /** Called by page reader when safe page detected (not uninstaller) */
+    public static void shrinkToBottom(Context context) {
+        Intent i = new Intent(context, SettingsBlockOverlayService.class);
+        i.setAction(ACTION_SHRINK_BOTTOM);
+        context.startForegroundService(i);
+    }
+
+    /** Called by WatchdogService when settings is closed — ONLY way to remove overlay */
     public static void hide(Context context) {
-        Intent intent = new Intent(context, SettingsBlockOverlayService.class);
-        intent.setAction(ACTION_HIDE);
-        context.startService(intent);
+        Intent i = new Intent(context, SettingsBlockOverlayService.class);
+        i.setAction(ACTION_HIDE);
+        context.startService(i); // not foreground — we're about to stop
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -81,7 +123,7 @@ public class SettingsBlockOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        handler = new Handler(Looper.getMainLooper());
+        mainHandler   = new Handler(Looper.getMainLooper());
 
         DisplayMetrics dm = new DisplayMetrics();
         windowManager.getDefaultDisplay().getMetrics(dm);
@@ -93,38 +135,47 @@ public class SettingsBlockOverlayService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
         String action = intent.getAction();
-        if (action == null) return START_NOT_STICKY;
+
+        // If we are in Full Overlay, we stay there until "Go Home" is clicked
+        if (isFullOverlay && !ACTION_HIDE.equals(action)) {
+            return START_NOT_STICKY;
+        }
 
         switch (action) {
 
-            case ACTION_SHOW_INSTANT:
-                startForeground(Constants.NOTIFICATION_ID_OVERLAY, buildNotification());
-                isRunning     = true;
-                isFullOverlay = false;
-                showBottomBlocker();
-                scheduleAutoTimeout();
-                break;
-
-            case ACTION_SHOW_FULL:
-                cancelAutoTimeout();
-                isFullOverlay = true;
-                removeBottomBlocker();
-                if (fullOverlayView == null) {
-                    showFullOverlay();
+            case ACTION_SHOW_BOTTOM:
+                if (!isRunning) { // Only start if not already running
+                    isRunning = true;
+                    // Transition to the 100dp standard bottom overlay
+                    mainHandler.post(() -> animateToHeight(BOTTOM_BLOCKER_DP, false));
                 }
                 break;
 
-            case ACTION_HIDE:
-                cancelAutoTimeout();
-                removeBottomBlocker();
-                removeFullOverlay();
-                stopForeground(true);
-                stopSelf();
-                isRunning     = false;
-                isFullOverlay = false;
-                return START_NOT_STICKY;
-        }
+            case ACTION_SHOW_FULL:
+                isFullOverlay = true;
+                mainHandler.post(this::animateToFull);
+                break;
 
+            case ACTION_SHRINK_BOTTOM:
+                // Add the 5 second delay before shrinking to 50dp
+                mainHandler.postDelayed(() -> {
+                    // Only shrink if we haven't moved to Full Screen in the meantime
+                    if (!isFullOverlay && isRunning) {
+                        animateToHeight(EXPLORING_SHRINK_DP, false);
+                    }
+                }, DELAY_EXPLORING_MS);
+                break;
+
+            case ACTION_HIDE:
+                Log.d("MONK_DEBUG", "OverlayService: Executing ACTION_HIDE. Removing view now.");
+                mainHandler.post(() -> {
+                    removeOverlay();
+                    stopSelf();
+                    isRunning = false;
+                    isFullOverlay = false;
+                });
+                break;
+        }
         return START_NOT_STICKY;
     }
 
@@ -135,204 +186,289 @@ public class SettingsBlockOverlayService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        cancelAutoTimeout();
-        removeBottomBlocker();
-        removeFullOverlay();
+        mainHandler.removeCallbacksAndMessages(null);
+        removeOverlay();
         isRunning     = false;
         isFullOverlay = false;
     }
 
-    // ── Layer 1: Bottom Blocker ───────────────────────────────────────────────
+    // ── Overlay Management ────────────────────────────────────────────────────
 
-    private void showBottomBlocker() {
-        if (bottomBlockerView != null) return;
-        if (!Settings.canDrawOverlays(this)) return;
+    /**
+     * Creates (or resets to) the bottom blocker state.
+     * The overlay view is created once and reused — we only change its height.
+     */
+    private void applyBottomOverlay() {
+        if (!Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "No overlay permission — cannot show blocker");
+            return;
+        }
+
+        float density    = getResources().getDisplayMetrics().density;
+        int   bottomH    = (int)(BOTTOM_BLOCKER_DP * density);
+
+        if (overlayView == null) {
+            // First time — create the view and add it
+            overlayParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    bottomH,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    PixelFormat.TRANSLUCENT
+            );
+            overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
+            overlayParams.x = 0;
+            overlayParams.y = 0;
+
+            overlayView = buildOverlayView(false);
+
+            try {
+                windowManager.addView(overlayView, overlayParams);
+                Log.i(TAG, "⚡ Bottom blocker shown");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to add overlay", e);
+                overlayView = null;
+            }
+
+        } else {
+            // Already exists — just resize to bottom height
+            overlayParams.height  = bottomH;
+            overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
+            overlayParams.flags   = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+            try {
+                // Rebuild content for bottom state
+                if (overlayView instanceof FrameLayout) {
+                    ((FrameLayout) overlayView).removeAllViews();
+                    ((FrameLayout) overlayView).addView(buildOverlayView(false));
+                }
+                windowManager.updateViewLayout(overlayView, overlayParams);
+            } catch (Exception e) {
+                Log.w(TAG, "updateViewLayout failed: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Animates the overlay from bottom height to full screen.
+     * Direction: grows upward (gravity = BOTTOM).
+     */
+    private void animateToFull() {
+        if (overlayView == null) {
+            // Overlay not yet created — create it at full size directly
+            applyFullOverlayDirect();
+            return;
+        }
 
         float density = getResources().getDisplayMetrics().density;
-        int blockerHeight = (int)(180 * density);
+        int   startH  = (int)(BOTTOM_BLOCKER_DP * density);
+        int   endH    = screenHeight;
 
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                blockerHeight,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, // API 26+ only, minSdk handles this
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                PixelFormat.OPAQUE
-        );
-        params.gravity = Gravity.BOTTOM | Gravity.START;
-        params.x = 0;
-        params.y = 0;
+        android.animation.ValueAnimator anim =
+                android.animation.ValueAnimator.ofInt(startH, endH);
+        anim.setDuration(ANIMATE_DURATION_MS);
+        anim.setInterpolator(new DecelerateInterpolator());
+        anim.addUpdateListener(a -> {
+            if (overlayView == null) return;
+            overlayParams.height = (int) a.getAnimatedValue();
+            // Enable touch (so "Go Home" button works) halfway through
+            if (overlayParams.height > screenHeight / 2) {
+                overlayParams.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+            }
+            try { windowManager.updateViewLayout(overlayView, overlayParams); }
+            catch (Exception ignored) {}
+        });
 
-        bottomBlockerView = buildBottomBlockerView();
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                // Swap content to full-screen view when animation completes
+                if (overlayView instanceof FrameLayout) {
+                    ((FrameLayout) overlayView).removeAllViews();
+                    ((FrameLayout) overlayView).addView(buildOverlayView(true));
+                }
+                Log.i(TAG, "✅ Full overlay expanded");
+            }
+        });
 
-        try {
-            windowManager.addView(bottomBlockerView, params);
-            android.util.Log.i(TAG, "⚡ Bottom blocker shown instantly");
-        } catch (Exception e) {
-            android.util.Log.e(TAG, "Failed to show bottom blocker", e);
-            bottomBlockerView = null;
+        anim.start();
+    }
+
+    /**
+     * Generic height animator for Bottom/Exploring states.
+     */
+    private void animateToHeight(int targetDp, boolean enableTouch) {
+        if (overlayView == null) {
+            applyBottomOverlay(); // Fallback to create view
+            return;
         }
+
+        float density = getResources().getDisplayMetrics().density;
+        int endH = (int) (targetDp * density);
+
+        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofInt(overlayParams.height, endH);
+        anim.setDuration(ANIMATE_DURATION_MS);
+        anim.setInterpolator(new DecelerateInterpolator());
+        anim.addUpdateListener(a -> {
+            if (overlayView == null) return;
+            overlayParams.height = (int) a.getAnimatedValue();
+            // Standard flags for bottom overlays
+            overlayParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+            try { windowManager.updateViewLayout(overlayView, overlayParams); } catch (Exception ignored) {}
+        });
+        anim.start();
     }
 
-    private View buildBottomBlockerView() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setGravity(Gravity.CENTER);
-        layout.setBackgroundColor(Color.parseColor("#F0080E1A"));
-
-        TextView label = new TextView(this);
-        label.setText(R.string.overlay_protected_label);
-        label.setTextSize(13f);
-        label.setTextColor(Color.parseColor("#64748B"));
-        label.setGravity(Gravity.CENTER);
-        label.setTypeface(null, Typeface.BOLD);
-        layout.addView(label);
-
-        return layout;
-    }
-
-    private void removeBottomBlocker() {
-        if (bottomBlockerView != null && windowManager != null) {
-            try { windowManager.removeView(bottomBlockerView); } catch (Exception ignored) {}
-            bottomBlockerView = null;
-        }
-    }
-
-    // ── Layer 2: Full Screen Overlay ──────────────────────────────────────────
-
-    private void showFullOverlay() {
+    /**
+     * Directly shows full-screen overlay (no animation — called when overlay didn't exist yet).
+     */
+    private void applyFullOverlayDirect() {
         if (!Settings.canDrawOverlays(this)) return;
 
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+        overlayParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
+                screenHeight,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                 PixelFormat.TRANSLUCENT
         );
-        params.gravity = Gravity.TOP | Gravity.START;
+        overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
 
-        fullOverlayView = buildFullView();
-
+        overlayView = buildOverlayView(true);
         try {
-            windowManager.addView(fullOverlayView, params);
-            // Allow button clicks after view is attached
-            handler.post(() -> {
-                if (fullOverlayView != null && windowManager != null) {
-                    try {
-                        WindowManager.LayoutParams lp =
-                                (WindowManager.LayoutParams) fullOverlayView.getLayoutParams();
-                        lp.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                                | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-                        windowManager.updateViewLayout(fullOverlayView, lp);
-                    } catch (Exception ignored) {}
-                }
-            });
-            android.util.Log.i(TAG, "✅ Full overlay shown");
+            windowManager.addView(overlayView, overlayParams);
+            Log.i(TAG, "✅ Full overlay shown directly");
         } catch (Exception e) {
-            android.util.Log.e(TAG, "Failed to show full overlay", e);
+            Log.e(TAG, "Failed to add full overlay", e);
+            overlayView = null;
         }
     }
 
-    private View buildFullView() {
+    private void removeOverlay() {
+        if (overlayView != null && windowManager != null) {
+            try { windowManager.removeView(overlayView); } catch (Exception ignored) {}
+            overlayView = null;
+        }
+    }
+
+    // ── View Builders ─────────────────────────────────────────────────────────
+
+    /**
+     * Builds the overlay content.
+     *
+     * @param isFull  true = full-screen with "Go Home" button
+     *                false = bottom strip with shield label only
+     */
+    private View buildOverlayView(boolean isFull) {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.parseColor(isFull ? "#F0080E1A" : "#E6080E1A"));
+
+        if (isFull) {
+            root.addView(buildFullContent());
+        } else {
+            root.addView(buildBottomContent());
+        }
+
+        return root;
+    }
+
+    private View buildBottomContent() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.HORIZONTAL);
+        layout.setGravity(Gravity.CENTER);
+        layout.setBackgroundColor(Color.TRANSPARENT);
+
+        TextView label = new TextView(this);
+        label.setText("🛡️  Protected by Digital Monk");
+        label.setTextSize(13f);
+        label.setTextColor(Color.parseColor("#94A3B8"));
+        label.setGravity(Gravity.CENTER);
+        label.setTypeface(null, Typeface.BOLD);
+        label.setLetterSpacing(0.05f);
+
+        layout.addView(label);
+        return layout;
+    }
+
+    private View buildFullContent() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.parseColor("#F0080E1A"));
+        root.setBackgroundColor(Color.TRANSPARENT);
 
+        // Shield icon
         TextView shield = new TextView(this);
-        shield.setText(R.string.overlay_shield_emoji);
-        shield.setTextSize(64f);
+        shield.setText("🛡️");
+        shield.setTextSize(56f);
         shield.setGravity(Gravity.CENTER);
 
+        // Title
         TextView title = new TextView(this);
-        title.setText(R.string.overlay_protected_title);
+        title.setText("Protected by Digital Monk");
         title.setTextSize(22f);
         title.setTextColor(Color.WHITE);
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
         title.setPadding(48, 24, 48, 12);
 
+        // Subtitle
         TextView subtitle = new TextView(this);
-        subtitle.setText(R.string.overlay_protected_subtitle);
+        subtitle.setText("This page is restricted.\nA parent PIN is required to make changes here.");
         subtitle.setTextSize(15f);
         subtitle.setTextColor(Color.parseColor("#94A3B8"));
         subtitle.setGravity(Gravity.CENTER);
         subtitle.setPadding(48, 0, 48, 48);
         subtitle.setLineSpacing(6f, 1f);
 
-        Button homeBtn = new Button(this);
-        homeBtn.setText(R.string.overlay_go_home_button);
+        // "Go to Home Screen" button
+        android.widget.Button homeBtn = new android.widget.Button(this);
+        homeBtn.setText("← Go to Home Screen");
         homeBtn.setTextColor(Color.WHITE);
         homeBtn.setTextSize(16f);
         homeBtn.setTypeface(null, Typeface.BOLD);
         homeBtn.setBackgroundColor(Color.parseColor("#3B82F6"));
         homeBtn.setPadding(64, 28, 64, 28);
 
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        btnParams.gravity = Gravity.CENTER_HORIZONTAL;
-        btnParams.topMargin = 8;
+        btnLp.gravity = Gravity.CENTER_HORIZONTAL;
+        btnLp.topMargin = 8;
 
         homeBtn.setOnClickListener(v -> {
-            isRunning     = false;
-            isFullOverlay = false;
+            // 1. Send the user home
             Intent homeIntent = new Intent(Intent.ACTION_MAIN);
             homeIntent.addCategory(Intent.CATEGORY_HOME);
             homeIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(homeIntent);
-            hide(getApplicationContext());
+
+            // 2. EXPLICITLY reset and hide because the user clicked the button
+            isFullOverlay = false;
+            hide(this);
         });
 
         root.addView(shield);
         root.addView(title);
         root.addView(subtitle);
-        root.addView(homeBtn, btnParams);
+        root.addView(homeBtn, btnLp);
 
         return root;
-    }
-
-    private void removeFullOverlay() {
-        if (fullOverlayView != null && windowManager != null) {
-            try { windowManager.removeView(fullOverlayView); } catch (Exception ignored) {}
-            fullOverlayView = null;
-        }
-    }
-
-    // ── Auto-timeout for bottom blocker ───────────────────────────────────────
-
-    private static final long AUTO_TIMEOUT_MS = 3000L;
-
-    private final Runnable autoTimeoutRunnable = () -> {
-        android.util.Log.d(TAG, "Auto-timeout: no dangerous page confirmed, removing bottom blocker");
-        removeBottomBlocker();
-        if (!isFullOverlay) {
-            stopForeground(true);
-            stopSelf();
-            isRunning = false;
-        }
-    };
-
-    private void scheduleAutoTimeout() {
-        handler.removeCallbacks(autoTimeoutRunnable);
-        handler.postDelayed(autoTimeoutRunnable, AUTO_TIMEOUT_MS);
-    }
-
-    private void cancelAutoTimeout() {
-        handler.removeCallbacks(autoTimeoutRunnable);
     }
 
     // ── Notification ──────────────────────────────────────────────────────────
 
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
-                .setContentTitle(getString(R.string.overlay_notification_title))
-                .setContentText(getString(R.string.overlay_notification_text))
+                .setContentTitle("Digital Monk — Settings Protected")
+                .setContentText("Restricted page blocked")
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
