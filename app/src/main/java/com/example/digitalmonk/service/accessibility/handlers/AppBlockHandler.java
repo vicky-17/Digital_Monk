@@ -19,7 +19,14 @@ public class AppBlockHandler {
 
     // ── State ─────────────────────────────────────────────────────────────────
     private String  lastCheckedPackage  = null;
-    private boolean lastWasDangerous    = false;
+
+    /**
+     * Once we confirm a dangerous page, this latch stays TRUE until the user
+     * navigates completely away from all settings packages.
+     * We never flip it back to false just because the detector returns false on
+     * a subsequent content-change event — that avoids the "overlay flicker" bug.
+     */
+    private boolean dangerousPageLatched = false;
     private String  lastSettingsPackage = null;
 
     // ── Settings packages that get an INSTANT bottom blocker on entry ─────────
@@ -47,9 +54,12 @@ public class AppBlockHandler {
      *   we show a bottom blocker covering the action button area. Zero content analysis.
      *   This fires in <50ms — before the user can even read what page they're on.
      *
-     * Phase 2 — CONFIRMED full overlay:
-     *   UninstallerDetector runs its 4-gate check. If it passes, upgrade to full-screen.
-     *   If it fails, the 3-second auto-timeout removes the bottom blocker silently.
+     * Phase 2 — CONFIRMED full overlay (latched):
+     *   UninstallerDetector runs its 4-gate check. If it passes, we upgrade to
+     *   full-screen AND latch — meaning we never remove the overlay just because a
+     *   subsequent event fails the check. The overlay only goes away when the user
+     *   taps "Go to Home Screen" (inside SettingsBlockOverlayService) or when they
+     *   leave the settings app entirely.
      */
     public void handle(AccessibilityNodeInfo root,
                        String packageName,
@@ -71,11 +81,11 @@ public class AppBlockHandler {
                     }
                 }
             } else {
-                // Left settings entirely — clear state and hide overlays
+                // User navigated away from settings entirely — clear all state
                 if (lastSettingsPackage != null) {
-                    lastSettingsPackage = null;
-                    lastWasDangerous    = false;
-                    lastCheckedPackage  = null;
+                    lastSettingsPackage  = null;
+                    dangerousPageLatched = false;
+                    lastCheckedPackage   = null;
                     if (SettingsBlockOverlayService.isRunning) {
                         SettingsBlockOverlayService.hide(context);
                     }
@@ -83,33 +93,40 @@ public class AppBlockHandler {
             }
         }
 
-        // ── Phase 2: 4-gate dangerous page confirmation ────────────────────────
-        // Only on STATE_CHANGED to avoid ANR from CONTENT_CHANGED spam.
+        // ── Phase 2: 4-gate dangerous page confirmation (latched) ──────────────
+        //
+        // KEY CHANGE: if the latch is already set we skip re-running the detector
+        // and keep the full overlay up — no more flicker when detector temporarily
+        // returns false on a CONTENT_CHANGED event.
+        if (dangerousPageLatched) {
+            if (!SettingsBlockOverlayService.isFullOverlay) {
+                // Ensure full overlay is showing (e.g. service was killed and restarted)
+                SettingsBlockOverlayService.show(context);
+            }
+            return; // Nothing else to do — overlay is locked until user leaves settings
+        }
+
+        // Only run the expensive detector on STATE_CHANGED, or when the package changed.
         boolean runCheck = (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
                 || !packageName.equals(lastCheckedPackage);
 
         if (runCheck) {
             lastCheckedPackage = packageName;
-            lastWasDangerous   = UninstallerDetector.isDangerousSettingsPage(root, packageName);
-        }
+            boolean isDangerous = UninstallerDetector.isDangerousSettingsPage(root, packageName);
 
-        if (lastWasDangerous) {
-            // Upgrade bottom blocker → full screen overlay
-            if (!SettingsBlockOverlayService.isFullOverlay) {
-                Log.w(TAG, "🚨 Dangerous page confirmed — full overlay: " + packageName);
+            if (isDangerous) {
+                // Latch immediately — we won't un-latch on a subsequent false result
+                dangerousPageLatched = true;
+                Log.w(TAG, "🚨 Dangerous page confirmed — latching full overlay: " + packageName);
                 SettingsBlockOverlayService.show(context);
+                return;
             }
-            return;
+            // Not dangerous — bottom blocker auto-timeout will handle cleanup
         }
 
         // ── Standard app blocking ──────────────────────────────────────────────
         if (!prefs.isAppBlocked(packageName)) return;
         Log.d(TAG, "🚫 Blocked: " + packageName + " → HOME");
         actionPerformer.performAction(GLOBAL_ACTION_HOME);
-    }
-
-    /** Legacy overload. */
-    public void handle(AccessibilityNodeInfo root, String packageName, android.content.Context context) {
-        handle(root, packageName, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, context);
     }
 }

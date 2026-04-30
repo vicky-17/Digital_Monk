@@ -23,25 +23,14 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import com.example.digitalmonk.R;
 import com.example.digitalmonk.core.utils.Constants;
 
 /**
  * FAST DUAL-OVERLAY Anti-Uninstall System
  * ─────────────────────────────────────────────────────────────────────────────
- * Problem: Detection → overlay chain takes ~200-500ms, enough for a quick tap.
- *
- * Solution: TWO overlays shown in sequence:
- *
- * Layer 1 — BOTTOM BLOCKER (shown INSTANTLY when settings package opens):
- *   A narrow bar covering the bottom ~180dp of the screen where action buttons
- *   (Force stop / Uninstall / Deactivate) live. Appears in <50ms.
- *   No text, just an opaque cover. Prevents accidental taps during detection.
- *
- * Layer 2 — FULL SCREEN BLOCK (shown after 4-gate confirmation):
- *   The existing full-screen overlay with "Go to Home" button.
- *   Replaces Layer 1 once we confirm it's actually a dangerous page.
- *
- * If after confirmation it is NOT a dangerous page → both layers are removed.
+ * Layer 1 — BOTTOM BLOCKER (instant, on settings package open)
+ * Layer 2 — FULL SCREEN BLOCK (after 4-gate confirmation)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 public class SettingsBlockOverlayService extends Service {
@@ -49,17 +38,17 @@ public class SettingsBlockOverlayService extends Service {
     private static final String TAG = "SettingsBlockOverlay";
 
     // ── Intent actions ────────────────────────────────────────────────────────
-    public static final String ACTION_SHOW_INSTANT   = "ACTION_SETTINGS_BLOCK_INSTANT";
-    public static final String ACTION_SHOW_FULL      = "ACTION_SETTINGS_BLOCK_SHOW";
-    public static final String ACTION_HIDE           = "ACTION_SETTINGS_BLOCK_HIDE";
+    public static final String ACTION_SHOW_INSTANT = "ACTION_SETTINGS_BLOCK_INSTANT";
+    public static final String ACTION_SHOW_FULL    = "ACTION_SETTINGS_BLOCK_SHOW";
+    public static final String ACTION_HIDE         = "ACTION_SETTINGS_BLOCK_HIDE";
 
     // ── State ─────────────────────────────────────────────────────────────────
-    public static volatile boolean isRunning        = false;
-    public static volatile boolean isFullOverlay    = false;
+    public static volatile boolean isRunning     = false;
+    public static volatile boolean isFullOverlay = false;
 
     private WindowManager windowManager;
-    private View bottomBlockerView;   // Layer 1 — instant narrow bottom cover
-    private View fullOverlayView;     // Layer 2 — confirmed full-screen block
+    private View bottomBlockerView;
+    private View fullOverlayView;
 
     private Handler handler;
     private int screenWidth;
@@ -67,40 +56,19 @@ public class SettingsBlockOverlayService extends Service {
 
     // ── Static helpers ────────────────────────────────────────────────────────
 
-    /**
-     * Call this the INSTANT a settings package comes to foreground.
-     * Shows a thin bottom blocker covering the action button area immediately.
-     * Does NOT require 4-gate confirmation — just package name is enough.
-     */
     public static void showInstant(Context context) {
         if (isRunning) return;
         Intent intent = new Intent(context, SettingsBlockOverlayService.class);
         intent.setAction(ACTION_SHOW_INSTANT);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-        } else {
-            context.startService(intent);
-        }
+        context.startForegroundService(intent);
     }
 
-    /**
-     * Call this after 4-gate confirmation (dangerous page detected).
-     * Upgrades the bottom blocker to a full-screen overlay.
-     */
     public static void show(Context context) {
         Intent intent = new Intent(context, SettingsBlockOverlayService.class);
         intent.setAction(ACTION_SHOW_FULL);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-        } else {
-            context.startService(intent);
-        }
+        context.startForegroundService(intent);
     }
 
-    /**
-     * Call when user leaves the settings app OR if not a dangerous page.
-     * Removes all layers.
-     */
     public static void hide(Context context) {
         Intent intent = new Intent(context, SettingsBlockOverlayService.class);
         intent.setAction(ACTION_HIDE);
@@ -130,24 +98,17 @@ public class SettingsBlockOverlayService extends Service {
         switch (action) {
 
             case ACTION_SHOW_INSTANT:
-                // Start foreground immediately to prevent FGS timeout crash
                 startForeground(Constants.NOTIFICATION_ID_OVERLAY, buildNotification());
-                isRunning = true;
+                isRunning     = true;
                 isFullOverlay = false;
-                // Show the instant bottom blocker — covers uninstall button area
                 showBottomBlocker();
-                // Auto-timeout: if full overlay not triggered in 3s, we hide
-                // (means user navigated away or it wasn't a dangerous page)
                 scheduleAutoTimeout();
                 break;
 
             case ACTION_SHOW_FULL:
-                // Confirmed dangerous page — upgrade to full screen
                 cancelAutoTimeout();
                 isFullOverlay = true;
-                // Remove bottom blocker first
                 removeBottomBlocker();
-                // Show full overlay
                 if (fullOverlayView == null) {
                     showFullOverlay();
                 }
@@ -159,7 +120,7 @@ public class SettingsBlockOverlayService extends Service {
                 removeFullOverlay();
                 stopForeground(true);
                 stopSelf();
-                isRunning = false;
+                isRunning     = false;
                 isFullOverlay = false;
                 return START_NOT_STICKY;
         }
@@ -177,43 +138,28 @@ public class SettingsBlockOverlayService extends Service {
         cancelAutoTimeout();
         removeBottomBlocker();
         removeFullOverlay();
-        isRunning = false;
+        isRunning     = false;
         isFullOverlay = false;
     }
 
     // ── Layer 1: Bottom Blocker ───────────────────────────────────────────────
 
-    /**
-     * A narrow opaque bar covering the bottom ~180dp where action buttons live.
-     * Shown instantly on package entry — no content analysis needed.
-     *
-     * Height calculation: 180dp covers the bottom bar on most MIUI/stock UIs
-     * where Force stop / Uninstall buttons are rendered.
-     */
     private void showBottomBlocker() {
         if (bottomBlockerView != null) return;
         if (!Settings.canDrawOverlays(this)) return;
 
         float density = getResources().getDisplayMetrics().density;
-        // Cover bottom 180dp — this covers the 3-button action bar in App Info
         int blockerHeight = (int)(180 * density);
-
-        int layoutFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 blockerHeight,
-                layoutFlag,
-                // NOT_FOCUSABLE so keyboard/back button still works normally
-                // NOT_TOUCH_MODAL so touches outside the bar go through
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, // API 26+ only, minSdk handles this
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.OPAQUE
         );
-        // Anchor to bottom of screen
         params.gravity = Gravity.BOTTOM | Gravity.START;
         params.x = 0;
         params.y = 0;
@@ -233,11 +179,10 @@ public class SettingsBlockOverlayService extends Service {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER);
-        // Dark navy — matches the settings theme so it looks intentional
         layout.setBackgroundColor(Color.parseColor("#F0080E1A"));
 
         TextView label = new TextView(this);
-        label.setText("🛡️  Protected by Digital Monk");
+        label.setText(R.string.overlay_protected_label);
         label.setTextSize(13f);
         label.setTextColor(Color.parseColor("#64748B"));
         label.setGravity(Gravity.CENTER);
@@ -259,14 +204,10 @@ public class SettingsBlockOverlayService extends Service {
     private void showFullOverlay() {
         if (!Settings.canDrawOverlays(this)) return;
 
-        int layoutFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
-
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
-                layoutFlag,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
@@ -303,12 +244,12 @@ public class SettingsBlockOverlayService extends Service {
         root.setBackgroundColor(Color.parseColor("#F0080E1A"));
 
         TextView shield = new TextView(this);
-        shield.setText("🛡️");
+        shield.setText(R.string.overlay_shield_emoji);
         shield.setTextSize(64f);
         shield.setGravity(Gravity.CENTER);
 
         TextView title = new TextView(this);
-        title.setText("Protected by Digital Monk");
+        title.setText(R.string.overlay_protected_title);
         title.setTextSize(22f);
         title.setTextColor(Color.WHITE);
         title.setTypeface(null, Typeface.BOLD);
@@ -316,7 +257,7 @@ public class SettingsBlockOverlayService extends Service {
         title.setPadding(48, 24, 48, 12);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("This page is restricted.\nA parent PIN is required to make changes here.");
+        subtitle.setText(R.string.overlay_protected_subtitle);
         subtitle.setTextSize(15f);
         subtitle.setTextColor(Color.parseColor("#94A3B8"));
         subtitle.setGravity(Gravity.CENTER);
@@ -324,7 +265,7 @@ public class SettingsBlockOverlayService extends Service {
         subtitle.setLineSpacing(6f, 1f);
 
         Button homeBtn = new Button(this);
-        homeBtn.setText("← Go to Home Screen");
+        homeBtn.setText(R.string.overlay_go_home_button);
         homeBtn.setTextColor(Color.WHITE);
         homeBtn.setTextSize(16f);
         homeBtn.setTypeface(null, Typeface.BOLD);
@@ -339,7 +280,7 @@ public class SettingsBlockOverlayService extends Service {
         btnParams.topMargin = 8;
 
         homeBtn.setOnClickListener(v -> {
-            isRunning = false;
+            isRunning     = false;
             isFullOverlay = false;
             Intent homeIntent = new Intent(Intent.ACTION_MAIN);
             homeIntent.addCategory(Intent.CATEGORY_HOME);
@@ -365,10 +306,6 @@ public class SettingsBlockOverlayService extends Service {
 
     // ── Auto-timeout for bottom blocker ───────────────────────────────────────
 
-    /**
-     * If the full overlay isn't triggered within 3 seconds of the instant blocker,
-     * it means the user navigated to a safe settings page — remove the bottom blocker.
-     */
     private static final long AUTO_TIMEOUT_MS = 3000L;
 
     private final Runnable autoTimeoutRunnable = () -> {
@@ -394,8 +331,8 @@ public class SettingsBlockOverlayService extends Service {
 
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
-                .setContentTitle("Digital Monk — Settings Protected")
-                .setContentText("Restricted page blocked")
+                .setContentTitle(getString(R.string.overlay_notification_title))
+                .setContentText(getString(R.string.overlay_notification_text))
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
