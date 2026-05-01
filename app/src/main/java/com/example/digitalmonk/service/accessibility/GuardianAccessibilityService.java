@@ -5,52 +5,63 @@ import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import com.example.digitalmonk.core.utils.UiDumper;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.accessibility.handlers.AppBlockHandler;
 import com.example.digitalmonk.service.accessibility.handlers.ShortsBlockHandler;
 
-/**
- * GuardianAccessibilityService — Updated
- * ─────────────────────────────────────────────────────────────────────────────
- * KEY CHANGE: Added getCurrentRootNode() static method so SettingsPageReader
- * can request the root node without having a direct reference to the service.
- *
- * IMPORTANT: AppBlockHandler no longer handles settings page detection.
- * That is now fully owned by:
- *   WatchdogService → SettingsAppMonitor → SettingsBlockOverlayService
- *   WatchdogService → SettingsPageReader (reads page content for confirmation)
- *
- * Accessibility still handles:
- *   - Shorts blocking (ShortsBlockHandler)
- *   - Standard app blocking for non-settings apps (AppBlockHandler)
- *   - Provides root node to SettingsPageReader when alive
- * ─────────────────────────────────────────────────────────────────────────────
- */
+
+
+
 public class GuardianAccessibilityService extends AccessibilityService {
 
     private static final String TAG = "GuardianService";
 
-    // ── Static state — read by SettingsPageReader, AccessibilityHealthChecker ─
+    // ─────────────────────────────────────────────────────────────────────────
+    // Public Static State  (read by other components from background threads)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** System.currentTimeMillis() of the last accessibility event received */
     public static volatile long   lastEventTimestamp        = 0L;
+
+    /** System.currentTimeMillis() when the service successfully connected */
     public static volatile long   serviceConnectedTimestamp = 0L;
+
+    /** Package name of the most recently foregrounded app */
     public static volatile String lastForegroundPackage     = null;
 
-    // ── Static reference to self — used by getCurrentRootNode() ──────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Debug Flag
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * DEBUG — set true to dump the full UI tree on every window change.
+     * Filter logcat by tag MONK_UI_DUMP to see the output.
+     * Remember to set back to false before release.
+     */
+    public static volatile boolean DEBUG_DUMP_UI = false;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal State
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Held so getCurrentRootNode() can call getRootInActiveWindow() statically */
     private static volatile GuardianAccessibilityService instance = null;
 
-    // ── Handlers ──────────────────────────────────────────────────────────────
     private PrefsManager       prefs;
     private ShortsBlockHandler shortsBlockHandler;
     private AppBlockHandler    appBlockHandler;
 
-    // ── Static API for SettingsPageReader ─────────────────────────────────────
+    // =========================================================================
+    // Static API  (used by SettingsPageReader)
+    // =========================================================================
 
     /**
-     * Returns the root accessibility node of the current window.
-     * Returns null if the service is not connected or has been recycled.
+     * Returns the root AccessibilityNodeInfo for the currently active window,
+     * or null if the service is not connected / has been recycled.
      *
-     * THREAD SAFETY: getRootInActiveWindow() is thread-safe per Android docs.
-     * Called from WatchdogService's settings-poll thread.
+     * Safe to call from any thread — getRootInActiveWindow() is documented as
+     * thread-safe by the Android framework.
      */
     public static AccessibilityNodeInfo getCurrentRootNode() {
         GuardianAccessibilityService svc = instance;
@@ -62,7 +73,9 @@ public class GuardianAccessibilityService extends AccessibilityService {
         }
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // =========================================================================
+    // Service Lifecycle
+    // =========================================================================
 
     @Override
     protected void onServiceConnected() {
@@ -77,44 +90,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
         serviceConnectedTimestamp = System.currentTimeMillis();
         lastEventTimestamp        = 0L;
 
-        Log.i(TAG, "Guardian service connected ✅");
-    }
-
-    @Override
-    public void onAccessibilityEvent(AccessibilityEvent event) {
-        // Always stamp the heartbeat
-        lastEventTimestamp = System.currentTimeMillis();
-
-        if (event == null) return;
-
-        int        eventType = event.getEventType();
-        CharSequence pkgSeq  = event.getPackageName();
-
-        // Track foreground package
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSeq != null) {
-            lastForegroundPackage = pkgSeq.toString();
-        }
-
-        // Only process the two event types we care about
-        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                && eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            return;
-        }
-
-        if (pkgSeq == null) return;
-        String pkg = pkgSeq.toString();
-
-        // Never interfere with our own UI
-        if (pkg.equals(getApplicationContext().getPackageName())) return;
-
-        // Get root ONCE — shared between handlers
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-
-        // Shorts blocking
-        shortsBlockHandler.handle(root, pkg);
-
-        // App blocking (excluding settings packages — handled by WatchdogService now)
-        appBlockHandler.handle(root, pkg, eventType, getApplicationContext());
+        Log.i(TAG, "Guardian accessibility service connected");
     }
 
     @Override
@@ -128,5 +104,50 @@ public class GuardianAccessibilityService extends AccessibilityService {
         super.onDestroy();
         instance = null;
         Log.w(TAG, "Service destroyed");
+    }
+
+    // =========================================================================
+    // Event Handling
+    // =========================================================================
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        // Always update the heartbeat so health checks know the service is alive
+        lastEventTimestamp = System.currentTimeMillis();
+
+        if (event == null) return;
+
+        int          eventType = event.getEventType();
+        CharSequence pkgSeq    = event.getPackageName();
+
+        // Track which app is in the foreground
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSeq != null) {
+            lastForegroundPackage = pkgSeq.toString();
+        }
+
+        // We only care about these two event types — ignore everything else
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            return;
+        }
+
+        if (pkgSeq == null) return;
+        String pkg = pkgSeq.toString();
+
+        // Never process events from our own app
+        if (pkg.equals(getApplicationContext().getPackageName())) return;
+
+        // Fetch the root node once and share it between all handlers
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+
+        // ── DEBUG: log full UI tree on window change ──────────────────────────
+        if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            UiDumper.dumpAll(root, pkg);
+        }
+        // ── END DEBUG ─────────────────────────────────────────────────────────
+
+        // Delegate to feature handlers
+        shortsBlockHandler.handle(root, pkg);
+        appBlockHandler.handle(root, pkg, eventType, getApplicationContext());
     }
 }

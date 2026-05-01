@@ -1,5 +1,8 @@
 package com.example.digitalmonk.service.overlay;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.Notification;
 import android.app.Service;
 import android.content.Context;
@@ -24,108 +27,120 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import com.example.digitalmonk.R;
 import com.example.digitalmonk.core.utils.Constants;
 
-/**
- * SettingsBlockOverlayService — Restructured for UsageStats-driven detection
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * NEW ARCHITECTURE (no accessibility dependency):
- * ─────────────────────────────────────────────────────────────────────────────
- * STATE MACHINE:
- *   HIDDEN   → settings package detected by WatchdogService   → BOTTOM_ONLY
- *   BOTTOM_ONLY → uninstaller page confirmed by page reader   → FULL_SCREEN
- *   FULL_SCREEN → safe page detected (not uninstaller)        → BOTTOM_ONLY
- *   BOTTOM_ONLY / FULL_SCREEN → settings app closed           → HIDDEN (via WatchdogService)
- *
- * KEY CHANGES vs old version:
- *   1. NO auto-timeout. Overlay is NEVER automatically removed.
- *      Only WatchdogService can hide it when settings is confirmed closed.
- *   2. Two-layer overlay:
- *      - Bottom blocker: 200dp tall, covers action buttons area (Force stop / Uninstall / Deactivate)
- *      - Full overlay: expands to fill entire screen when uninstaller page confirmed
- *   3. Height animation from bottom layer to full screen (smooth expansion)
- *   4. Expansion direction: grows UPWARD from bottom — natural since bottom bar is already there
- *   5. Separate MIUI path: detects com.miui.securitycenter and applies same logic
- *
- * THREAD SAFETY:
- *   All WindowManager operations are dispatched to the Main thread via Handler.
- *   State flags (isRunning, isFullOverlay) are volatile for cross-thread reads.
- * ─────────────────────────────────────────────────────────────────────────────
- */
+
+
+
+
+
+
 public class SettingsBlockOverlayService extends Service {
 
     private static final String TAG = "SettingsBlockOverlay";
 
-    // ── Intent actions ────────────────────────────────────────────────────────
-    /** Show the bottom-only blocker (settings opened) */
-    public static final String ACTION_SHOW_BOTTOM  = "ACTION_SETTINGS_BLOCK_BOTTOM";
-    /** Expand to full screen (uninstaller page confirmed) */
-    public static final String ACTION_SHOW_FULL    = "ACTION_SETTINGS_BLOCK_FULL";
-    /** Shrink back to bottom-only (non-dangerous page) */
-    public static final String ACTION_SHRINK_BOTTOM = "ACTION_SETTINGS_BLOCK_SHRINK";
-    /** Hide everything (settings closed) */
-    public static final String ACTION_HIDE         = "ACTION_SETTINGS_BLOCK_HIDE";
+    // ─────────────────────────────────────────────────────────────────────────
+    // Intent Actions  (callers use the static helpers below, not raw intents)
+    // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Public state — read by WatchdogService & AppBlockHandler ─────────────
+    /** WatchdogService → settings app opened: show bottom strip */
+    public static final String ACTION_SHOW_BOTTOM   = "ACTION_SETTINGS_BLOCK_BOTTOM";
+
+    /** SettingsPageReader → uninstaller page confirmed: expand to full screen */
+    public static final String ACTION_SHOW_FULL     = "ACTION_SETTINGS_BLOCK_FULL";
+
+    /** SettingsPageReader → safe page detected: shrink back to bottom strip */
+    public static final String ACTION_SHRINK_BOTTOM = "ACTION_SETTINGS_BLOCK_SHRINK";
+
+    /** WatchdogService → settings app closed: remove overlay entirely */
+    public static final String ACTION_HIDE          = "ACTION_SETTINGS_BLOCK_HIDE";
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Public State  (read by WatchdogService / AppBlockHandler)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** True while any overlay layer is visible */
     public static volatile boolean isRunning     = false;
+
+    /** True when the full-screen layer is active */
     public static volatile boolean isFullOverlay = false;
 
-    // ── Internal state ────────────────────────────────────────────────────────
-    private WindowManager windowManager;
-    private View          overlayView;        // single view; we animate its height
+    /**
+     * DEBUG — set true to suppress all overlay drawing.
+     * Lets you navigate Settings freely while UiDumper logs the screen tree.
+     * Remember to set back to false before release.
+     */
+    public static volatile boolean DEBUG_SUPPRESS_OVERLAY = false;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Layout / Animation Constants
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Height of the bottom strip in dp — sized to cover Force Stop / Uninstall buttons */
+    private static final int INITIAL_BLOCKER_DP  = 650;
+
+    /** Height in dp after shrinking when a non-dangerous settings page is detected */
+    private static final int EXPLORING_SHRINK_DP = 80;
+
+    /** How long to wait (ms) before shrinking when a safe page is detected */
+    private static final int DELAY_EXPLORING_MS  = 2_000;
+
+    /** Duration of all height animations */
+    private static final int ANIMATE_DURATION_MS = 350;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal State
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private WindowManager              windowManager;
+    private Handler                    mainHandler;
+
+    /** The single animated overlay view (reused across state changes) */
+    private View                       overlayView;
     private WindowManager.LayoutParams overlayParams;
 
-    // ── NEW: Transparent full-screen touch blocker ────────────────────────────
-    // Sits behind the animated overlay. Consumes ALL taps during the shrink
-    // animation so the uninstall button can never be reached mid-frame.
-    private View touchBlockerView;
+    /**
+     * Transparent full-screen view added during shrink animations.
+     * Consumes all touches so the uninstall button is unreachable mid-frame.
+     */
+    private View                       touchBlockerView;
     private WindowManager.LayoutParams touchBlockerParams;
-
-    private Handler mainHandler;
 
     private int screenWidth;
     private int screenHeight;
 
-    private static final int INITIAL_BLOCKER_DP  = 650;  // covers action buttons area
-    private static final int EXPLORING_SHRINK_DP = 80;  // Other details/non-critical pages
+    // =========================================================================
+    // Static Helpers  (called by WatchdogService / SettingsPageReader)
+    // =========================================================================
 
-
-    private static final int DELAY_EXPLORING_MS = 2000; // Your requested 5-second delay
-    private static final int ANIMATE_DURATION_MS = 350;
-
-    // ── Static helpers ────────────────────────────────────────────────────────
-
-    /** Called by WatchdogService when it detects settings is open */
-    public static void showBottom(Context context) {
-        Intent i = new Intent(context, SettingsBlockOverlayService.class);
-        i.setAction(ACTION_SHOW_BOTTOM);
-        context.startForegroundService(i);
+    /** Settings app opened — show the bottom strip */
+    public static void showBottom(Context ctx) {
+        ctx.startForegroundService(intentFor(ctx, ACTION_SHOW_BOTTOM));
     }
 
-    /** Called by page reader when uninstaller page confirmed */
-    public static void expandFull(Context context) {
-        Intent i = new Intent(context, SettingsBlockOverlayService.class);
-        i.setAction(ACTION_SHOW_FULL);
-        context.startForegroundService(i);
+    /** Uninstaller page confirmed — expand to full screen */
+    public static void expandFull(Context ctx) {
+        ctx.startForegroundService(intentFor(ctx, ACTION_SHOW_FULL));
     }
 
-    /** Called by page reader when safe page detected (not uninstaller) */
-    public static void shrinkToBottom(Context context) {
-        Intent i = new Intent(context, SettingsBlockOverlayService.class);
-        i.setAction(ACTION_SHRINK_BOTTOM);
-        context.startForegroundService(i);
+    /** Safe page detected — shrink back to bottom strip */
+    public static void shrinkToBottom(Context ctx) {
+        ctx.startForegroundService(intentFor(ctx, ACTION_SHRINK_BOTTOM));
     }
 
-    /** Called by WatchdogService when settings is closed — ONLY way to remove overlay */
-    public static void hide(Context context) {
-        Intent i = new Intent(context, SettingsBlockOverlayService.class);
-        i.setAction(ACTION_HIDE);
-        context.startService(i); // not foreground — we're about to stop
+    /** Settings app closed — remove overlay (the ONLY removal path) */
+    public static void hide(Context ctx) {
+        // Plain startService: we are about to stop, no foreground needed
+        ctx.startService(intentFor(ctx, ACTION_HIDE));
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    private static Intent intentFor(Context ctx, String action) {
+        return new Intent(ctx, SettingsBlockOverlayService.class).setAction(action);
+    }
+
+    // =========================================================================
+    // Service Lifecycle
+    // =========================================================================
 
     @Override
     public void onCreate() {
@@ -141,39 +156,41 @@ public class SettingsBlockOverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) {
-            // Called after system restart — just stop cleanly
-            stopSelf();
-            return START_NOT_STICKY;
-        }
-
-        String action = intent.getAction();
-
-        // ── CRITICAL FIX: Call startForeground() immediately ─────────────────
-        // Android demands this within 5s of startForegroundService().
-        // We must call it even if we're about to stop, then call stopForeground().
+        // Android requires startForeground() within 5 s of startForegroundService().
+        // Call it immediately, even when we might stop right away.
         try {
             startForeground(Constants.NOTIFICATION_ID_SETTINGS_BLOCK, buildNotification());
         } catch (Exception e) {
             Log.e(TAG, "startForeground failed", e);
         }
 
-        // If we are in Full Overlay, we stay there until "Go Home" is clicked
+        if (intent == null) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        String action = intent.getAction();
+        if (action == null) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        // Full-screen lock: once we are full, ignore everything except HIDE
         if (isFullOverlay && !ACTION_HIDE.equals(action)) {
             return START_NOT_STICKY;
         }
 
-        if (action == null) {
-            stopSelf();
+        // Debug mode: suppress all overlay drawing (but still allow HIDE to clean up)
+        if (DEBUG_SUPPRESS_OVERLAY && !ACTION_HIDE.equals(action)) {
+            Log.d(TAG, "[DEBUG] Overlay suppressed — DEBUG_SUPPRESS_OVERLAY=true");
             return START_NOT_STICKY;
         }
 
         switch (action) {
 
             case ACTION_SHOW_BOTTOM:
-                if (!isRunning) { // Only start if not already running
+                if (!isRunning) {
                     isRunning = true;
-                    // Transition to the 100dp standard bottom overlay
                     mainHandler.post(() -> animateToHeight(INITIAL_BLOCKER_DP, false));
                 }
                 break;
@@ -184,9 +201,8 @@ public class SettingsBlockOverlayService extends Service {
                 break;
 
             case ACTION_SHRINK_BOTTOM:
-                // Add the 5 second delay before shrinking to 50dp
+                // Delay gives the page reader time to confirm the navigation is final
                 mainHandler.postDelayed(() -> {
-                    // Only shrink if we haven't moved to Full Screen in the meantime
                     if (!isFullOverlay && isRunning) {
                         animateToHeight(EXPLORING_SHRINK_DP, false);
                     }
@@ -194,50 +210,54 @@ public class SettingsBlockOverlayService extends Service {
                 break;
 
             case ACTION_HIDE:
-                Log.d("MONK_DEBUG", "OverlayService: Executing ACTION_HIDE. Removing view now.");
+                Log.d(TAG, "ACTION_HIDE received — removing overlay");
                 mainHandler.post(() -> {
                     removeOverlay();
                     stopForeground(true);
                     stopSelf();
-                    isRunning = false;
+                    isRunning     = false;
                     isFullOverlay = false;
                 });
                 break;
         }
+
         return START_NOT_STICKY;
     }
 
     @Nullable
     @Override
-    public IBinder onBind(Intent intent) { return null; }
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         mainHandler.removeCallbacksAndMessages(null);
-        removeTouchBlocker();
-        removeOverlay();
+        removeOverlay(); // also removes touch blocker inside
         isRunning     = false;
         isFullOverlay = false;
     }
 
-    // ── Overlay Management ────────────────────────────────────────────────────
+    // =========================================================================
+    // Overlay Management
+    // =========================================================================
 
     /**
-     * Creates (or resets to) the bottom blocker state.
-     * The overlay view is created once and reused — we only change its height.
+     * Creates the overlay view if it doesn't exist yet, anchored to the bottom
+     * at INITIAL_BLOCKER_DP height. If the view exists, resets it to that height.
      */
     private void applyBottomOverlay() {
         if (!Settings.canDrawOverlays(this)) {
-            Log.w(TAG, "No overlay permission — cannot show blocker");
+            Log.w(TAG, "Missing SYSTEM_ALERT_WINDOW permission — overlay skipped");
             return;
         }
 
-        float density    = getResources().getDisplayMetrics().density;
-        int   bottomH    = (int)(INITIAL_BLOCKER_DP * density);
+        float density = getResources().getDisplayMetrics().density;
+        int   bottomH = (int) (INITIAL_BLOCKER_DP * density);
 
         if (overlayView == null) {
-            // First time — create the view and add it
+            // ── First time: create and add the view ──────────────────────────
             overlayParams = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     bottomH,
@@ -248,32 +268,30 @@ public class SettingsBlockOverlayService extends Service {
                     PixelFormat.TRANSLUCENT
             );
             overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
-            overlayParams.x = 0;
-            overlayParams.y = 0;
 
             overlayView = buildOverlayView(false);
-
             try {
                 windowManager.addView(overlayView, overlayParams);
-                Log.i(TAG, "⚡ Bottom blocker shown");
+                Log.i(TAG, "Bottom blocker added to window");
             } catch (Exception e) {
-                Log.e(TAG, "Failed to add overlay", e);
+                Log.e(TAG, "Failed to add overlay view", e);
                 overlayView = null;
             }
 
         } else {
-            // Already exists — just resize to bottom height
+            // ── View exists: resize and refresh content ───────────────────────
             overlayParams.height  = bottomH;
             overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
             overlayParams.flags   = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                     | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                     | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
+
+            if (overlayView instanceof FrameLayout) {
+                FrameLayout fl = (FrameLayout) overlayView;
+                fl.removeAllViews();
+                fl.addView(buildOverlayView(false));
+            }
             try {
-                // Rebuild content for bottom state
-                if (overlayView instanceof FrameLayout) {
-                    ((FrameLayout) overlayView).removeAllViews();
-                    ((FrameLayout) overlayView).addView(buildOverlayView(false));
-                }
                 windowManager.updateViewLayout(overlayView, overlayParams);
             } catch (Exception e) {
                 Log.w(TAG, "updateViewLayout failed: " + e.getMessage());
@@ -282,28 +300,73 @@ public class SettingsBlockOverlayService extends Service {
     }
 
     /**
-     * Animates the overlay from bottom height to full screen.
-     * Direction: grows upward (gravity = BOTTOM).
+     * Animates the overlay height from its current value to {@code targetDp}.
+     * A transparent touch-blocker covers the whole screen during the animation
+     * so no buttons beneath the shrinking overlay can be tapped.
+     */
+    private void animateToHeight(int targetDp, boolean enableTouch) {
+        addTouchBlocker(); // must go on before animation starts
+
+        if (overlayView == null) {
+            applyBottomOverlay();
+            removeTouchBlocker(); // nothing animated, release immediately
+            return;
+        }
+
+        float density = getResources().getDisplayMetrics().density;
+        int   startH  = overlayParams.height;
+        int   endH    = (int) (targetDp * density);
+
+        ValueAnimator anim = ValueAnimator.ofInt(startH, endH);
+        anim.setDuration(ANIMATE_DURATION_MS);
+        anim.setInterpolator(new DecelerateInterpolator());
+
+        anim.addUpdateListener(a -> {
+            if (overlayView == null) return;
+            overlayParams.height  = (int) a.getAnimatedValue();
+            overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
+            overlayParams.x       = 0;
+            overlayParams.y       = 0; // keeps bottom edge fixed
+            overlayParams.flags   = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+            try { windowManager.updateViewLayout(overlayView, overlayParams); }
+            catch (Exception ignored) {}
+        });
+
+        anim.addListener(new AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(Animator animation)    { removeTouchBlocker(); }
+            @Override public void onAnimationCancel(Animator animation) { removeTouchBlocker(); }
+        });
+
+        anim.start();
+    }
+
+    /**
+     * Animates the overlay from INITIAL_BLOCKER_DP up to full screen height.
+     * Touch is enabled halfway through so the "Go Home" button becomes tappable
+     * only once the overlay is large enough to cover the whole screen.
      */
     private void animateToFull() {
         if (overlayView == null) {
-            // Overlay not yet created — create it at full size directly
             applyFullOverlayDirect();
             return;
         }
 
         float density = getResources().getDisplayMetrics().density;
-        int   startH  = (int)(INITIAL_BLOCKER_DP * density);
+        int   startH  = (int) (INITIAL_BLOCKER_DP * density);
         int   endH    = screenHeight;
 
-        android.animation.ValueAnimator anim =
-                android.animation.ValueAnimator.ofInt(startH, endH);
+        ValueAnimator anim = ValueAnimator.ofInt(startH, endH);
         anim.setDuration(ANIMATE_DURATION_MS);
         anim.setInterpolator(new DecelerateInterpolator());
+
         anim.addUpdateListener(a -> {
             if (overlayView == null) return;
             overlayParams.height = (int) a.getAnimatedValue();
-            // Enable touch (so "Go Home" button works) halfway through
+
+            // Enable touch input once overlay covers the bottom half
             if (overlayParams.height > screenHeight / 2) {
                 overlayParams.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
@@ -312,15 +375,16 @@ public class SettingsBlockOverlayService extends Service {
             catch (Exception ignored) {}
         });
 
-        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+        anim.addListener(new AnimatorListenerAdapter() {
             @Override
-            public void onAnimationEnd(android.animation.Animator animation) {
-                // Swap content to full-screen view when animation completes
+            public void onAnimationEnd(Animator animation) {
+                // Swap in the full-screen content (adds "Go Home" button)
                 if (overlayView instanceof FrameLayout) {
-                    ((FrameLayout) overlayView).removeAllViews();
-                    ((FrameLayout) overlayView).addView(buildOverlayView(true));
+                    FrameLayout fl = (FrameLayout) overlayView;
+                    fl.removeAllViews();
+                    fl.addView(buildFullContent());
                 }
-                Log.i(TAG, "✅ Full overlay expanded");
+                Log.i(TAG, "Full overlay expanded");
             }
         });
 
@@ -328,60 +392,8 @@ public class SettingsBlockOverlayService extends Service {
     }
 
     /**
-     * Generic height animator for Bottom/Exploring states.
-     */
-    private void animateToHeight(int targetDp, boolean enableTouch) {
-        // Ensure touch blocker is active before we start shrinking
-        addTouchBlocker();
-
-        if (overlayView == null) {
-            applyBottomOverlay(); // Fallback to create view
-            removeTouchBlocker(); // nothing to animate, remove immediately
-            return;
-        }
-
-        float density = getResources().getDisplayMetrics().density;
-        int startH = overlayParams.height;
-        int endH = (int) (targetDp * density);
-
-        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofInt(startH, endH);
-        anim.setDuration(ANIMATE_DURATION_MS);
-        anim.setInterpolator(new DecelerateInterpolator());
-
-        anim.addUpdateListener(a -> {
-            if (overlayView == null) return;
-            overlayParams.height = (int) a.getAnimatedValue();
-            overlayParams.gravity = Gravity.BOTTOM | Gravity.START;
-            overlayParams.x       = 0;
-            overlayParams.y       = 0; // ← LOCK: bottom edge never moves
-            overlayParams.flags   = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                    | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS; // ← prevents system shift
-            try { windowManager.updateViewLayout(overlayView, overlayParams); }
-            catch (Exception ignored) {}
-        });
-
-        anim.addListener(new android.animation.AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(android.animation.Animator animation) {
-                // ← KEY FIX: release the touch blocker now that animation is settled
-                removeTouchBlocker();
-                Log.i(TAG, "🔓 Touch blocker released after animation settled");
-            }
-
-            @Override
-            public void onAnimationCancel(android.animation.Animator animation) {
-                // Also release if animation is interrupted (e.g. ACTION_HIDE mid-flight)
-                removeTouchBlocker();
-            }
-        });
-
-        anim.start();
-    }
-
-    /**
-     * Directly shows full-screen overlay (no animation — called when overlay didn't exist yet).
+     * Skips animation and immediately shows the full-screen overlay.
+     * Used when ACTION_SHOW_FULL arrives before the view has been created.
      */
     private void applyFullOverlayDirect() {
         if (!Settings.canDrawOverlays(this)) return;
@@ -399,47 +411,95 @@ public class SettingsBlockOverlayService extends Service {
         overlayView = buildOverlayView(true);
         try {
             windowManager.addView(overlayView, overlayParams);
-            Log.i(TAG, "✅ Full overlay shown directly");
+            Log.i(TAG, "Full overlay added directly (no animation)");
         } catch (Exception e) {
             Log.e(TAG, "Failed to add full overlay", e);
             overlayView = null;
         }
     }
 
+    /** Removes the animated overlay from the window (calls removeTouchBlocker first) */
     private void removeOverlay() {
-        removeTouchBlocker(); // ← remove blocker first
+        removeTouchBlocker();
         if (overlayView != null && windowManager != null) {
             try { windowManager.removeView(overlayView); } catch (Exception ignored) {}
             overlayView = null;
         }
     }
 
-    // ── View Builders ─────────────────────────────────────────────────────────
+    // =========================================================================
+    // Touch Blocker
+    // =========================================================================
 
     /**
-     * Builds the overlay content.
+     * Adds an invisible full-screen view that consumes every touch event.
      *
-     * @param isFull  true = full-screen with "Go Home" button
-     *                false = bottom strip with shield label only
+     * WHY: During a shrink animation the visible overlay gets smaller, briefly
+     * exposing the area where the uninstall / force-stop button lives.
+     * This blocker stays full-screen for the entire animation duration so those
+     * buttons can never be reached mid-frame.
+     *
+     * It is always removed in onAnimationEnd / onAnimationCancel.
+     */
+    private void addTouchBlocker() {
+        if (touchBlockerView != null) return; // already active
+        if (!Settings.canDrawOverlays(this)) return;
+
+        touchBlockerParams = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                // Intentionally omit FLAG_NOT_TOUCH_MODAL — we want ALL touches
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+        );
+        touchBlockerParams.gravity = Gravity.BOTTOM | Gravity.START;
+
+        touchBlockerView = new View(this);
+        touchBlockerView.setBackgroundColor(Color.TRANSPARENT);
+        touchBlockerView.setOnTouchListener((v, e) -> true); // swallow everything
+
+        try {
+            windowManager.addView(touchBlockerView, touchBlockerParams);
+            Log.d(TAG, "Touch blocker added");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to add touch blocker", e);
+            touchBlockerView = null;
+        }
+    }
+
+    private void removeTouchBlocker() {
+        if (touchBlockerView != null && windowManager != null) {
+            try { windowManager.removeView(touchBlockerView); } catch (Exception ignored) {}
+            touchBlockerView = null;
+            Log.d(TAG, "Touch blocker removed");
+        }
+    }
+
+    // =========================================================================
+    // View Builders
+    // =========================================================================
+
+    /**
+     * Returns the root FrameLayout for the overlay.
+     *
+     * @param isFull true  → full-screen layout with "Go Home" button
+     *               false → compact bottom strip with shield label only
      */
     private View buildOverlayView(boolean isFull) {
         FrameLayout root = new FrameLayout(this);
+        // Slightly more opaque when full-screen for a stronger visual block
         root.setBackgroundColor(Color.parseColor(isFull ? "#F0080E1A" : "#E6080E1A"));
-
-        if (isFull) {
-            root.addView(buildFullContent());
-        } else {
-            root.addView(buildBottomContent());
-        }
-
+        root.addView(isFull ? buildFullContent() : buildBottomContent());
         return root;
     }
 
+    /** Compact bottom strip — just the shield label */
     private View buildBottomContent() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.HORIZONTAL);
         layout.setGravity(Gravity.CENTER);
-        layout.setBackgroundColor(Color.TRANSPARENT);
 
         TextView label = new TextView(this);
         label.setText("🛡️  Protected by Digital Monk");
@@ -453,19 +513,19 @@ public class SettingsBlockOverlayService extends Service {
         return layout;
     }
 
+    /** Full-screen layout — shield icon, title, subtitle, and "Go Home" button */
     private View buildFullContent() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.TRANSPARENT);
 
-        // Shield icon
+        // ── Shield emoji ──────────────────────────────────────────────────────
         TextView shield = new TextView(this);
         shield.setText("🛡️");
         shield.setTextSize(56f);
         shield.setGravity(Gravity.CENTER);
 
-        // Title
+        // ── Title ─────────────────────────────────────────────────────────────
         TextView title = new TextView(this);
         title.setText("Protected by Digital Monk");
         title.setTextSize(22f);
@@ -474,7 +534,7 @@ public class SettingsBlockOverlayService extends Service {
         title.setGravity(Gravity.CENTER);
         title.setPadding(48, 24, 48, 12);
 
-        // Subtitle
+        // ── Subtitle ──────────────────────────────────────────────────────────
         TextView subtitle = new TextView(this);
         subtitle.setText("This page is restricted.\nA parent PIN is required to make changes here.");
         subtitle.setTextSize(15f);
@@ -483,7 +543,7 @@ public class SettingsBlockOverlayService extends Service {
         subtitle.setPadding(48, 0, 48, 48);
         subtitle.setLineSpacing(6f, 1f);
 
-        // "Go to Home Screen" button
+        // ── "Go Home" button ──────────────────────────────────────────────────
         android.widget.Button homeBtn = new android.widget.Button(this);
         homeBtn.setText("← Go to Home Screen");
         homeBtn.setTextColor(Color.WHITE);
@@ -496,17 +556,17 @@ public class SettingsBlockOverlayService extends Service {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        btnLp.gravity = Gravity.CENTER_HORIZONTAL;
+        btnLp.gravity   = Gravity.CENTER_HORIZONTAL;
         btnLp.topMargin = 8;
 
         homeBtn.setOnClickListener(v -> {
-            // 1. Send the user home
-            Intent homeIntent = new Intent(Intent.ACTION_MAIN);
-            homeIntent.addCategory(Intent.CATEGORY_HOME);
-            homeIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(homeIntent);
+            // Navigate home
+            Intent home = new Intent(Intent.ACTION_MAIN);
+            home.addCategory(Intent.CATEGORY_HOME);
+            home.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(home);
 
-            // 2. EXPLICITLY reset and hide because the user clicked the button
+            // Reset state and tear down overlay
             isFullOverlay = false;
             hide(this);
         });
@@ -519,53 +579,9 @@ public class SettingsBlockOverlayService extends Service {
         return root;
     }
 
-
-
-
-    /**
-     * Adds an invisible full-screen view that eats all touch events.
-     * This is the KEY FIX: during height animation the visible overlay shrinks,
-     * but this blocker stays full-screen so the uninstall button is NEVER reachable.
-     */
-    private void addTouchBlocker() {
-        if (touchBlockerView != null) return; // already added
-        if (!Settings.canDrawOverlays(this)) return;
-
-        touchBlockerParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                // NOT_TOUCH_MODAL is intentionally absent — we WANT to intercept all touches
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                        | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT
-        );
-        touchBlockerParams.gravity = Gravity.BOTTOM | Gravity.START;
-        touchBlockerParams.x = 0;
-        touchBlockerParams.y = 0;
-
-        touchBlockerView = new View(this);
-        touchBlockerView.setBackgroundColor(Color.TRANSPARENT);
-        // Consume every touch silently
-        touchBlockerView.setOnTouchListener((v, event) -> true);
-
-        try {
-            windowManager.addView(touchBlockerView, touchBlockerParams);
-            Log.i(TAG, "🛡️ Touch blocker added");
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to add touch blocker", e);
-            touchBlockerView = null;
-        }
-    }
-
-    private void removeTouchBlocker() {
-        if (touchBlockerView != null && windowManager != null) {
-            try { windowManager.removeView(touchBlockerView); } catch (Exception ignored) {}
-            touchBlockerView = null;
-        }
-    }
-
-    // ── Notification ──────────────────────────────────────────────────────────
+    // =========================================================================
+    // Foreground Notification  (required to keep the service alive)
+    // =========================================================================
 
     private Notification buildNotification() {
         return new NotificationCompat.Builder(this, Constants.CHANNEL_SILENT)
