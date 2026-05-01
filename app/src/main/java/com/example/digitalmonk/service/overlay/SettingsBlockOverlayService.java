@@ -568,12 +568,15 @@ public class SettingsBlockOverlayService extends Service {
     // ── Notification ──────────────────────────────────────────────────────────
 
     private Notification buildNotification() {
-        return new NotificationCompat.Builder(this, Constants.CHANNEL_ALERTS)
-                .setContentTitle("Digital Monk — Settings Protected")
-                .setContentText("Restricted page blocked")
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+        return new NotificationCompat.Builder(this, Constants.CHANNEL_SILENT)
+                .setContentTitle("")
+                .setContentText("")
+                .setSmallIcon(android.R.drawable.ic_menu_info_details)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                .setSilent(true)
+                .setShowWhen(false)
+                .setOngoing(false)
                 .build();
     }
 }

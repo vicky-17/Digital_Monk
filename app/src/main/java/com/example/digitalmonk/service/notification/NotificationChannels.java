@@ -76,6 +76,18 @@ public class NotificationChannels {
             alertsChannel.setDescription("Alerts when a child tries to access blocked content.");
             channels.add(alertsChannel);
 
+            // Silent channel for overlay service — no sound, no popup, hidden from shade
+            NotificationChannel silentChannel = new NotificationChannel(
+                    Constants.CHANNEL_SILENT,
+                    "Background Protection",
+                    NotificationManager.IMPORTANCE_MIN   // ← lowest possible, hidden from shade
+            );
+            silentChannel.setSound(null, null);
+            silentChannel.enableVibration(false);
+            silentChannel.enableLights(false);
+            silentChannel.setShowBadge(false);
+            channels.add(silentChannel);
+
             // Register all channels at once
             manager.createNotificationChannels(channels);
         }

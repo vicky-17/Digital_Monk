@@ -29,12 +29,17 @@ public final class Constants {
     public static final int NOTIFICATION_ID_VPN = 3;
     public static final int NOTIFICATION_ID_SCREENTIME = 4;
 
+
     // ── Notification Channels ─────────────────────────────────────────────────
     public static final String CHANNEL_GUARDIAN = "channel_guardian";
     public static final String CHANNEL_OVERLAY = "channel_overlay";
     public static final String CHANNEL_VPN = "channel_vpn";
     public static final String CHANNEL_SCREEN_TIME = "channel_screen_time";
     public static final String CHANNEL_ALERTS = "channel_alerts";
+    public static final String CHANNEL_SILENT = "channel_silent";
+
+    public static final int NOTIFICATION_ID_SETTINGS_BLOCK = 1004;
+
 
     // ── SharedPrefs / DataStore keys ──────────────────────────────────────────
     public static final String PREFS_NAME = "digital_monk_prefs";
@@ -54,6 +59,5 @@ public final class Constants {
     public static final String EXTRA_TARGET_SCREEN = "extra_target_screen";
     public static final String EXTRA_BLOCKED_PACKAGE = "extra_blocked_package";
 
-    public static final int NOTIFICATION_ID_SETTINGS_BLOCK = 1004;
 
 }
