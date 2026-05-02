@@ -22,7 +22,7 @@ public class SettingsPageReader {
     private static final String TAG = "SettingsPageReader";
 
     private static final long ESCAPE_COOLDOWN_MS     = 2_500L;
-    private static final long ACCESSIBILITY_GRACE_MS = 20_000L;
+    private static final long ACCESSIBILITY_GRACE_MS = 5_000L;
 
     private static final Set<String> SETTINGS_PACKAGES =
             SettingsAppMonitor.SETTINGS_PACKAGES;
@@ -39,6 +39,7 @@ public class SettingsPageReader {
             new HashSet<>(Arrays.asList(
                     "Force stop",
                     "Uninstall",
+                    "Deactivate",
                     "Deactivate & uninstall",
                     "Deactivate and uninstall"
             ))
@@ -55,26 +56,20 @@ public class SettingsPageReader {
         long now = System.currentTimeMillis();
         if (now - lastEscapeAttemptMs < ESCAPE_COOLDOWN_MS) return;
 
-        // ── FAST PATH: miui.securitycenter ────────────────────────────────────
-        // This package in your setup exclusively hosts Digital Monk's App Info.
-        // No root check needed — fire immediately on first detection.
+        // New: check root first; only skip root check if root is null
         if ("com.miui.securitycenter".equals(settingsPkg)) {
-            Log.w(TAG, "🚨 miui.securitycenter → fast-path escape");
-            lastEscapeAttemptMs = now;
-            launchRedirectActivity(context);
+            AccessibilityNodeInfo root = getAccessibilityRoot();
+            if (root == null || isDangerousSettingsPage(root, settingsPkg)) {
+                Log.w(TAG, "🚨 miui.securitycenter → escape");
+                lastEscapeAttemptMs = now;
+                launchRedirectActivity(context);
+            }
             return;
         }
 
-        // ── STANDARD PATH: com.android.settings (Device Admin page) ──────────
-        // For this package we do attempt a root check, but also fall back to
-        // launching the redirect activity if root is null (first-time issue fix).
         AccessibilityNodeInfo root = getAccessibilityRoot();
 
-        // Root null on com.android.settings = first poll, node not ready yet.
-        // Launch redirect anyway — it's better to over-trigger than miss.
         if (root == null && "com.android.settings".equals(settingsPkg)) {
-            Log.w(TAG, "🚨 com.android.settings + null root → conservative escape");
-            lastEscapeAttemptMs = now;
             launchRedirectActivity(context);
             return;
         }
