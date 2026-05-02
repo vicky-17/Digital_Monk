@@ -103,6 +103,10 @@ dependencies {
     // ── Gson (kept for compatibility) ─────────────────────────────────────────
     implementation("com.google.code.gson:gson:2.10.1")
 
+
+    implementation("androidx.lifecycle:lifecycle-service:2.8.4")
+    implementation("androidx.savedstate:savedstate:1.2.1")
+
     // ── Testing ──────────────────────────────────────────────────────────────
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

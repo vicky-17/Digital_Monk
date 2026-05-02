@@ -34,7 +34,14 @@ import com.example.digitalmonk.core.utils.Constants;
 
 
 
-public class SettingsBlockOverlayService extends Service {
+public class SettingsBlockOverlayService extends Service
+        implements androidx.lifecycle.LifecycleOwner {
+
+    @NonNull
+    @Override
+    public androidx.lifecycle.Lifecycle getLifecycle() {
+        return lifecycleRegistry;
+    }
 
     private static final String TAG = "SettingsBlockOverlay";
 
@@ -108,6 +115,11 @@ public class SettingsBlockOverlayService extends Service {
     private int screenWidth;
     private int screenHeight;
 
+
+    // ── Compose fields ────────────────────────────────────────────────────────
+    private androidx.lifecycle.LifecycleRegistry lifecycleRegistry;
+    private androidx.compose.runtime.MutableState<OverlayState> overlayState;
+
     // =========================================================================
     // Static Helpers  (called by WatchdogService / SettingsPageReader)
     // =========================================================================
@@ -143,6 +155,10 @@ public class SettingsBlockOverlayService extends Service {
 
     @Override
     public void onCreate() {
+
+        lifecycleRegistry = new androidx.lifecycle.LifecycleRegistry(this);
+        lifecycleRegistry.setCurrentState(androidx.lifecycle.Lifecycle.State.CREATED);
+
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         mainHandler   = new Handler(Looper.getMainLooper());
@@ -159,6 +175,8 @@ public class SettingsBlockOverlayService extends Service {
         // Call it immediately, even when we might stop right away.
         try {
             startForeground(Constants.NOTIFICATION_ID_SETTINGS_BLOCK, buildNotification());
+            lifecycleRegistry.setCurrentState(androidx.lifecycle.Lifecycle.State.STARTED);
+            lifecycleRegistry.setCurrentState(androidx.lifecycle.Lifecycle.State.RESUMED);
         } catch (Exception e) {
             Log.e(TAG, "startForeground failed", e);
         }
@@ -231,6 +249,7 @@ public class SettingsBlockOverlayService extends Service {
 
     @Override
     public void onDestroy() {
+        lifecycleRegistry.setCurrentState(androidx.lifecycle.Lifecycle.State.DESTROYED);
         super.onDestroy();
         mainHandler.removeCallbacksAndMessages(null);
         removeOverlay(); // also removes touch blocker inside
@@ -381,8 +400,7 @@ public class SettingsBlockOverlayService extends Service {
                 // Swap in the full-screen content (adds "Go Home" button)
                 if (overlayView instanceof FrameLayout) {
                     FrameLayout fl = (FrameLayout) overlayView;
-                    fl.removeAllViews();
-                    fl.addView(buildFullContent());
+                    if (overlayState != null) overlayState.setValue(OverlayState.FULL);
                 }
                 Log.i(TAG, "Full overlay expanded");
             }
@@ -487,11 +505,47 @@ public class SettingsBlockOverlayService extends Service {
      * @param isFull true  → full-screen layout with "Go Home" button
      *               false → compact bottom strip with shield label only
      */
+    private OverlayLifecycleOwner overlayLifecycleOwner;
+
     private View buildOverlayView(boolean isFull) {
+        OverlayState initialState = isFull ? OverlayState.FULL : OverlayState.BOTTOM;
+
+        overlayLifecycleOwner = new OverlayLifecycleOwner();
+        overlayLifecycleOwner.onCreate();
+        overlayLifecycleOwner.onStart();
+        overlayLifecycleOwner.onResume();
+
+        androidx.compose.ui.platform.ComposeView composeView =
+                new androidx.compose.ui.platform.ComposeView(this);
+
+        ViewTreeLifecycleOwner.set(composeView, overlayLifecycleOwner);
+        ViewTreeSavedStateRegistryOwner.set(composeView, overlayLifecycleOwner);
+
+        // Keep a handle to update state later
+        overlayState = androidx.compose.runtime.SnapshotStateKt
+                .mutableStateOf(initialState, androidx.compose.runtime.SnapshotMutationPolicyKt.structuralEqualityPolicy());
+
+        final androidx.compose.runtime.State<OverlayState> stateSnapshot = overlayState;
+
+        composeView.setContent(() ->
+                OverlayComposeContentKt.OverlayComposeContent(
+                        stateSnapshot.getValue(),
+                        () -> {
+                            Intent home = new Intent(Intent.ACTION_MAIN);
+                            home.addCategory(Intent.CATEGORY_HOME);
+                            home.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(home);
+                            hide(SettingsBlockOverlayService.this);
+                            return null;
+                        }
+                )
+        );
+
         FrameLayout root = new FrameLayout(this);
-        // Slightly more opaque when full-screen for a stronger visual block
-        root.setBackgroundColor(Color.parseColor(isFull ? "#F0080E1A" : "#E6080E1A"));
-        root.addView(isFull ? buildFullContent() : buildBottomContent());
+        root.addView(composeView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
         return root;
     }
 
