@@ -28,14 +28,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.settingspageoverlay.ui.theme.AppTheme
-import com.example.settingspageoverlay.ui.theme.inclusiveSans
-import com.example.settingspageoverlay.ui.theme.inknutAntiqua
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
+import com.example.digitalmonk.ui.theme.inclusiveSans
+import com.example.digitalmonk.ui.theme.inknutAntiqua
+
 
 // region BlockedPageScreen
 /**
@@ -87,7 +88,7 @@ private fun ProtectionHeader(
     modifier: Modifier = Modifier
 ) {
     Text(
-        text = stringResource(id = R.string.protected_by_digital_monk),
+        text = "🛡️  Protected by Digital Monk",
         color = BlockedPageTokens.textColor,
         style = TextStyle(
             fontSize = BlockedPageTokens.headerFontSize,
@@ -108,8 +109,8 @@ private fun ProtectionHeader(
 private fun BlockedMessage(
     modifier: Modifier = Modifier
 ) {
-    val warningEmoji = stringResource(id = R.string.warning_emoji)
-    val blockedText = stringResource(id = R.string.page_is_blocked)
+    val warningEmoji = "⚠️"
+    val blockedText = "This page is blocked by Digital Monk"
 
     Text(
         text = buildAnnotatedString {
@@ -152,7 +153,7 @@ private fun GoToHomeButton(
             .padding(horizontal = BlockedPageTokens.buttonHorizontalPadding)
     ) {
         Text(
-            text = stringResource(id = R.string.go_to_home),
+            text = "← Go to Home Screen",
             color = BlockedPageTokens.textColor,
             style = TextStyle(
                 fontSize = BlockedPageTokens.buttonFontSize,

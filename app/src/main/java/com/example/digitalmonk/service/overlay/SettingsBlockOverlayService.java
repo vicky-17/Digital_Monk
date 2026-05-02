@@ -25,7 +25,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
+import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
+import androidx.lifecycle.ViewTreeLifecycleOwner;
+import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
+
 
 import com.example.digitalmonk.core.utils.Constants;
 
@@ -305,11 +309,8 @@ public class SettingsBlockOverlayService extends Service
                     | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                     | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL;
 
-            if (overlayView instanceof FrameLayout) {
-                FrameLayout fl = (FrameLayout) overlayView;
-                fl.removeAllViews();
-                fl.addView(buildOverlayView(false));
-            }
+            if (overlayState != null) overlayState.setValue(OverlayState.BOTTOM);
+
             try {
                 windowManager.updateViewLayout(overlayView, overlayParams);
             } catch (Exception e) {
@@ -439,9 +440,9 @@ public class SettingsBlockOverlayService extends Service
     /** Removes the animated overlay from the window (calls removeTouchBlocker first) */
     private void removeOverlay() {
         removeTouchBlocker();
-        if (overlayView != null && windowManager != null) {
-            try { windowManager.removeView(overlayView); } catch (Exception ignored) {}
-            overlayView = null;
+        if (overlayLifecycleOwner != null) {
+            overlayLifecycleOwner.onDestroy();
+            overlayLifecycleOwner = null;
         }
     }
 
@@ -549,89 +550,7 @@ public class SettingsBlockOverlayService extends Service
         return root;
     }
 
-    /** Compact bottom strip — just the shield label */
-    private View buildBottomContent() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.HORIZONTAL);
-        layout.setGravity(Gravity.CENTER);
 
-        TextView label = new TextView(this);
-        label.setText("🛡️  Protected by Digital Monk");
-        label.setTextSize(13f);
-        label.setTextColor(Color.parseColor("#94A3B8"));
-        label.setGravity(Gravity.CENTER);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setLetterSpacing(0.05f);
-
-        layout.addView(label);
-        return layout;
-    }
-
-    /** Full-screen layout — shield icon, title, subtitle, and "Go Home" button */
-    private View buildFullContent() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-
-        // ── Shield emoji ──────────────────────────────────────────────────────
-        TextView shield = new TextView(this);
-        shield.setText("🛡️");
-        shield.setTextSize(56f);
-        shield.setGravity(Gravity.CENTER);
-
-        // ── Title ─────────────────────────────────────────────────────────────
-        TextView title = new TextView(this);
-        title.setText("Protected by Digital Monk");
-        title.setTextSize(22f);
-        title.setTextColor(Color.WHITE);
-        title.setTypeface(null, Typeface.BOLD);
-        title.setGravity(Gravity.CENTER);
-        title.setPadding(48, 24, 48, 12);
-
-        // ── Subtitle ──────────────────────────────────────────────────────────
-        TextView subtitle = new TextView(this);
-        subtitle.setText("This page is restricted.\nA parent PIN is required to make changes here.");
-        subtitle.setTextSize(15f);
-        subtitle.setTextColor(Color.parseColor("#94A3B8"));
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(48, 0, 48, 48);
-        subtitle.setLineSpacing(6f, 1f);
-
-        // ── "Go Home" button ──────────────────────────────────────────────────
-        android.widget.Button homeBtn = new android.widget.Button(this);
-        homeBtn.setText("← Go to Home Screen");
-        homeBtn.setTextColor(Color.WHITE);
-        homeBtn.setTextSize(16f);
-        homeBtn.setTypeface(null, Typeface.BOLD);
-        homeBtn.setBackgroundColor(Color.parseColor("#3B82F6"));
-        homeBtn.setPadding(64, 28, 64, 28);
-
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        btnLp.gravity   = Gravity.CENTER_HORIZONTAL;
-        btnLp.topMargin = 8;
-
-        homeBtn.setOnClickListener(v -> {
-            // Navigate home
-            Intent home = new Intent(Intent.ACTION_MAIN);
-            home.addCategory(Intent.CATEGORY_HOME);
-            home.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(home);
-
-            // Reset state and tear down overlay
-            isFullOverlay = false;
-            hide(this);
-        });
-
-        root.addView(shield);
-        root.addView(title);
-        root.addView(subtitle);
-        root.addView(homeBtn, btnLp);
-
-        return root;
-    }
 
     // =========================================================================
     // Foreground Notification  (required to keep the service alive)

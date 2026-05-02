@@ -19,13 +19,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.settingspageoverlay.ui.theme.AppTheme
-import com.example.settingspageoverlay.ui.theme.inknutAntiqua
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
+import com.example.digitalmonk.ui.theme.inclusiveSans
+import com.example.digitalmonk.ui.theme.inknutAntiqua
+
+
 
 /**
  * A screen displaying a protection status banner at the bottom.
@@ -70,7 +73,7 @@ fun ProtectionBanner() {
             )
     ) {
         Text(
-            text = stringResource(id = R.string.protected_by_digital_monk),
+            text = "🛡️  Protected by Digital Monk",
             color = DesignTokens.colorWhite,
             style = TextStyle(
                 fontSize = DesignTokens.textSizeNormal,

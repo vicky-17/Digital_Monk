@@ -45,4 +45,12 @@
         <item>6️⃣  Return here — protection activates instantly</item>
     </string-array>
 
+    <string name="protected_by_digital_monk">🛡️  Protected by Digital Monk</string>
+    <string name="splash_protected_by">🛡️  Protected by Digital Monk</string>
+    <string name="warning_emoji">⚠️</string>
+    <string name="page_is_blocked">This page is blocked by Digital Monk</string>
+    <string name="go_to_home">← Go to Home Screen</string>
+
+
+
 </resources>

@@ -15,14 +15,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.settingspageoverlay.ui.theme.AppTheme
-import com.example.settingspageoverlay.ui.theme.inknutAntiqua
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.digitalmonk.ui.theme.inclusiveSans
+import com.example.digitalmonk.ui.theme.inknutAntiqua
 
 /**
  * Splash screen composable that displays the app branding.
@@ -58,7 +59,7 @@ fun SplashScreen(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = stringResource(id = R.string.splash_protected_by),
+                text = "🛡️  Protected by Digital Monk",
                 color = DesignTokens.colorWhite,
                 style = TextStyle(
                     fontSize = DesignTokens.fontSizeMedium,
