@@ -25,9 +25,7 @@ public final class Constants {
 
     // ── Notification IDs ──────────────────────────────────────────────────────
     public static final int NOTIFICATION_ID_GUARDIAN = 1;
-    public static final int NOTIFICATION_ID_OVERLAY = 2;
     public static final int NOTIFICATION_ID_VPN = 3;
-    public static final int NOTIFICATION_ID_SCREENTIME = 4;
 
 
     // ── Notification Channels ─────────────────────────────────────────────────

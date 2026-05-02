@@ -21,13 +21,11 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import com.example.digitalmonk.core.utils.AccessibilityHealthChecker;
 import com.example.digitalmonk.core.utils.AlarmScheduler;
 import com.example.digitalmonk.core.utils.Constants;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.monitor.SettingsAppMonitor;
 import com.example.digitalmonk.service.monitor.SettingsPageReader;
-import com.example.digitalmonk.service.overlay.GuardianOverlayService;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
 import com.example.digitalmonk.ui.dashboard.MainActivity;
@@ -239,17 +237,6 @@ public class WatchdogService extends Service {
             } catch (Exception e) {
                 Log.e(TAG, "VPN restart failed", e);
             }
-        }
-
-        // Accessibility health → GuardianOverlayService
-        boolean needsLockdown    = AccessibilityHealthChecker.needsLockdown(this);
-        boolean overlayShowing   = GuardianOverlayService.isRunning;
-
-        if (needsLockdown && !overlayShowing) {
-            boolean isFrozen = AccessibilityHealthChecker.isFrozen(this);
-            GuardianOverlayService.start(this, isFrozen);
-        } else if (!needsLockdown && overlayShowing) {
-            GuardianOverlayService.stop(this);
         }
     }
 

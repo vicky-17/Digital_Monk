@@ -34,7 +34,6 @@ import com.example.digitalmonk.core.utils.Constants;
 
 
 
-
 public class SettingsBlockOverlayService extends Service {
 
     private static final String TAG = "SettingsBlockOverlay";
@@ -250,6 +249,7 @@ public class SettingsBlockOverlayService extends Service {
     private void applyBottomOverlay() {
         if (!Settings.canDrawOverlays(this)) {
             Log.w(TAG, "Missing SYSTEM_ALERT_WINDOW permission — overlay skipped");
+
             return;
         }
 

@@ -59,6 +59,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Guardian escape activity — no UI chrome, instant launch -->
+        <activity
+            android:name=".service.accessibility.GuardianRedirectActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:taskAffinity="com.example.digitalmonk.block_task"
+            android:excludeFromRecents="false"
+            android:noHistory="true"
+            android:launchMode="singleInstance" />
+
         <activity
                 android:name=".ui.auth.PinSetupActivity"
                 android:exported="false" />

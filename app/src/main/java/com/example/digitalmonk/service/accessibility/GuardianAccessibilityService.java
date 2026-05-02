@@ -13,6 +13,7 @@ import com.example.digitalmonk.service.accessibility.handlers.ShortsBlockHandler
 
 
 
+
 public class GuardianAccessibilityService extends AccessibilityService {
 
     private static final String TAG = "GuardianService";
@@ -71,6 +72,11 @@ public class GuardianAccessibilityService extends AccessibilityService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // Add this public static getter (add alongside getCurrentRootNode):
+    public static GuardianAccessibilityService getInstance() {
+        return instance;
     }
 
     // =========================================================================

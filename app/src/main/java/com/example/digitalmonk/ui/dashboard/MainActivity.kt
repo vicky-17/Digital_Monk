@@ -1,7 +1,6 @@
 package com.example.digitalmonk.ui.dashboard
 
 import android.Manifest
-import android.app.Activity.RESULT_OK
 import android.content.ComponentName
 import android.content.Intent
 import android.net.VpnService
@@ -14,10 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -68,11 +64,6 @@ import com.example.digitalmonk.ui.auth.PinGateScreen
 import com.example.digitalmonk.ui.auth.PinSetupActivity
 import com.example.digitalmonk.ui.components.common.SectionLabel
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
-import com.example.digitalmonk.core.utils.AccessibilityHealthChecker
-import com.example.digitalmonk.service.overlay.GuardianOverlayService
-
-
-
 
 
 // ── Color palette ─────────────────────────────────────────────────────────────
@@ -203,17 +194,12 @@ class MainActivity : BaseActivity() {
                 if (event == Lifecycle.Event.ON_RESUME) {
                     refreshKey = System.currentTimeMillis()
 
-                    // ── Accessibility lockdown check on every resume ──
-                    val needsLockdown = AccessibilityHealthChecker.needsLockdown(context)
-                    val overlayShowing = GuardianOverlayService.isRunning
-                    if (needsLockdown && !overlayShowing) {
-                        val isFrozen = AccessibilityHealthChecker.isFrozen(context)
-                        GuardianOverlayService.start(context, isFrozen)
-                    }
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
         }
 
         val scrimAlpha by animateFloatAsState(
