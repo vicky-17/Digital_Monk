@@ -50,35 +50,33 @@ public class SettingsPageReader {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    public void readAndRespond(Context context, String settingsPkg) {
-        if (escapeInProgress) return;
+    public boolean  readAndRespond(Context context, String settingsPkg) {
+        if (escapeInProgress) return false;
 
         long now = System.currentTimeMillis();
-        if (now - lastEscapeAttemptMs < ESCAPE_COOLDOWN_MS) return;
+        if (now - lastEscapeAttemptMs < ESCAPE_COOLDOWN_MS) return false;
 
         // New: check root first; only skip root check if root is null
         if ("com.miui.securitycenter".equals(settingsPkg)) {
             AccessibilityNodeInfo root = getAccessibilityRoot();
-            if (root == null || isDangerousSettingsPage(root, settingsPkg)) {
+            if (root != null && isDangerousSettingsPage(root, settingsPkg)) {
                 Log.w(TAG, "🚨 miui.securitycenter → escape");
                 lastEscapeAttemptMs = now;
                 launchRedirectActivity(context);
+                return true; // ← dangerous, redirected
             }
-            return;
+            return false; // ← safe, just exploring
         }
 
         AccessibilityNodeInfo root = getAccessibilityRoot();
-
-        if (root == null && "com.android.settings".equals(settingsPkg)) {
-            launchRedirectActivity(context);
-            return;
-        }
-
         if (isDangerousSettingsPage(root, settingsPkg)) {
             Log.w(TAG, "🚨 Dangerous page confirmed in " + settingsPkg);
             lastEscapeAttemptMs = now;
             launchRedirectActivity(context);
+            return true; // ← dangerous, redirected
         }
+        return false; // ← safe, just exploring
+
     }
 
     public void reset() {

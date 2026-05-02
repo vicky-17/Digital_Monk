@@ -263,13 +263,18 @@ public class WatchdogService extends Service {
     }
 
     private void performSettingsPoll() {
-        // Step 1: Detect if settings is open (UsageStats — always reliable)
         settingsMonitor.poll();
 
-        // Step 2: If settings open, read the page content (accessibility — best effort)
         if (settingsMonitor.isSettingsOpen()) {
             String pkg = settingsMonitor.getCurrentSettingsPackage();
-            settingsPageReader.readAndRespond(this, pkg);
+            boolean isDangerous = settingsPageReader.readAndRespond(this, pkg);
+
+            // If page is safe (not dangerous), shrink overlay to exploring strip.
+            // Only shrink if we are not already in full overlay mode (dangerous page was confirmed).
+            if (!isDangerous && !SettingsBlockOverlayService.isFullOverlay
+                    && SettingsBlockOverlayService.isRunning) {
+                SettingsBlockOverlayService.shrinkToBottom(this);
+            }
         }
     }
 

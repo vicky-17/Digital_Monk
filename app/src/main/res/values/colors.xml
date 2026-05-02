@@ -7,4 +7,10 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Digital Monk Theme Colors -->
+    <color name="bg_overlay_semi">#E6080E1A</color> <!-- Frame 1 & 2 -->
+    <color name="bg_overlay_full">#F0080E1A</color> <!-- Frame 3 -->
+    <color name="accent_blue">#3B82F6</color>       <!-- Go Home Button -->
+    <color name="text_muted">#94A3B8</color>        <!-- Labels -->
 </resources>
