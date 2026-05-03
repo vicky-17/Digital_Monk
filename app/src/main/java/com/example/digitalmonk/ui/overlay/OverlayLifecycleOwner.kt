@@ -1,11 +1,12 @@
-package com.example.digitalmonk.service.overlay
+package com.example.digitalmonk.ui.overlay
 
 import androidx.lifecycle.*
 import androidx.savedstate.*
 
 /**
  * A minimal combined owner for use inside a WindowManager-hosted ComposeView.
- * Attach to the view before setContent() is called.
+ * This class provides the Lifecycle and SavedState signals that Jetpack Compose
+ * requires to function outside of a standard Activity.
  */
 class OverlayLifecycleOwner : LifecycleOwner, SavedStateRegistryOwner {
 
@@ -22,7 +23,23 @@ class OverlayLifecycleOwner : LifecycleOwner, SavedStateRegistryOwner {
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
     }
 
-    fun onStart()   { lifecycleRegistry.currentState = Lifecycle.State.STARTED }
-    fun onResume()  { lifecycleRegistry.currentState = Lifecycle.State.RESUMED }
-    fun onDestroy() { lifecycleRegistry.currentState = Lifecycle.State.DESTROYED }
+    fun onStart() {
+        lifecycleRegistry.currentState = Lifecycle.State.STARTED
+    }
+
+    fun onResume() {
+        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+    }
+
+    fun onPause() {
+        lifecycleRegistry.currentState = Lifecycle.State.STARTED
+    }
+
+    fun onStop() {
+        lifecycleRegistry.currentState = Lifecycle.State.CREATED
+    }
+
+    fun onDestroy() {
+        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+    }
 }
