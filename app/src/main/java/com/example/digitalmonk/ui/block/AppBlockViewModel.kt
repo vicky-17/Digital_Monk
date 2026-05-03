@@ -1,4 +1,4 @@
-package com.example.digitalmonk.ui.appblock
+package com.example.digitalmonk.ui.block
 
 import androidx.lifecycle.viewModelScope
 import com.example.digitalmonk.core.base.BaseViewModel

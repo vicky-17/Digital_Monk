@@ -141,6 +141,7 @@ public class SettingsBlockOverlayService extends Service {
 
             case ACTION_HIDE:
                 mainHandler.post(() -> {
+                    updateStage(SettingsOverlayStage.HIDE);
                     removeOverlay();
                     stopForeground(true);
                     stopSelf();
@@ -175,7 +176,7 @@ public class SettingsBlockOverlayService extends Service {
 
         overlayParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN

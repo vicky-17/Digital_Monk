@@ -97,7 +97,7 @@ public class SettingsPageReader {
     private void launchRedirectActivity(Context context) {
         escapeInProgress = true;
         try {
-            Intent intent = new Intent(context, GuardianRedirectActivity.class);
+            Intent intent = new Intent(context, com.example.digitalmonk.ui.block.BlockedPageActivity.class);
             intent.setFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK
                             | Intent.FLAG_ACTIVITY_NO_ANIMATION

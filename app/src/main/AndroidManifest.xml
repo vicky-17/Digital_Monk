@@ -68,6 +68,14 @@
             android:excludeFromRecents="false"
             android:noHistory="true"
             android:launchMode="singleInstance" />
+        <activity
+            android:name=".ui.block.BlockedPageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DigitalMonk"
+            android:taskAffinity="com.example.digitalmonk.block_task"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="false"
+            android:noHistory="true" />
 
         <activity
                 android:name=".ui.auth.PinSetupActivity"

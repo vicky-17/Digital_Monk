@@ -1,155 +1,64 @@
 package com.example.digitalmonk.ui.overlay
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 enum class SettingsOverlayStage {
-    STRIP,   // 80dp bar — safe page / exploring
-    HALF,    // 650dp — initial block on settings open
-    FULL     // full screen — dangerous uninstallation page
+    HIDE, STRIP, HALF, FULL
 }
 
 @Composable
 fun SettingsBlockOverlay(
     stage: SettingsOverlayStage,
-    onGoHome: () -> Unit = {}
+    onGoHome: () -> Unit = {},
+    // NEW: Callback to send the red box's coordinates back to Java
+    onBoundsUpdate: (android.graphics.Rect) -> Unit = {}
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val screenHeight = maxHeight
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
-        val targetHeight: Dp = when (stage) {
-            SettingsOverlayStage.STRIP -> 80.dp
-            SettingsOverlayStage.HALF  -> 650.dp.coerceAtMost(screenHeight * 0.8f)
-            SettingsOverlayStage.FULL  -> screenHeight
-        }
+    val targetHeight: Dp = when (stage) {
+        SettingsOverlayStage.HIDE -> 0.dp
+        SettingsOverlayStage.STRIP -> 70.dp
+        SettingsOverlayStage.HALF  -> 650.dp.coerceAtMost(screenHeight * 0.8f)
+        SettingsOverlayStage.FULL  -> screenHeight
+    }
 
-        val animatedHeight by animateDpAsState(
-            targetValue = targetHeight,
-            animationSpec = tween(durationMillis = 350),
-            label = "overlayHeight"
-        )
+    // 1. Invisible Full-Screen Canvas
+    Box(modifier = Modifier.fillMaxSize()) {
 
-        val animatedCorner by animateDpAsState(
-            targetValue = if (stage == SettingsOverlayStage.FULL) 0.dp else 20.dp,
-            animationSpec = tween(durationMillis = 400),
-            label = "cornerRadius"
-        )
-
-        val stripAlpha by animateFloatAsState(
-            targetValue = if (stage == SettingsOverlayStage.STRIP) 1f else 0f,
-            animationSpec = tween(durationMillis = 200),
-            label = "stripAlpha"
-        )
-
-        val richAlpha by animateFloatAsState(
-            targetValue = if (stage == SettingsOverlayStage.STRIP) 0f else 1f,
-            animationSpec = tween(durationMillis = 200),
-            label = "richAlpha"
-        )
-
-        val fullButtonAlpha by animateFloatAsState(
-            targetValue = if (stage == SettingsOverlayStage.FULL) 1f else 0f,
-            animationSpec = tween(durationMillis = 300),
-            label = "fullButtonAlpha"
-        )
-
+        // 2. The Animated Red Box
         Box(
             modifier = Modifier
+                .align(Alignment.BottomCenter) // Glued to the bottom!
                 .fillMaxWidth()
-                .height(animatedHeight)
-                .align(Alignment.BottomCenter)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = animatedCorner,
-                        topEnd = animatedCorner,
-                        bottomStart = 0.dp,
-                        bottomEnd = 0.dp
-                    )
-                )
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFF080E1A), Color(0xFF0D1520))
-                    )
-                )
-        ) {
-            // ── STRIP row ──────────────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center)
-                    .alpha(stripAlpha)
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "🛡️  Protected by Digital Monk",
-                    color = Color(0xFF94A3B8),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
-            }
-
-            // ── HALF / FULL rich content ───────────────────────────────────
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .alpha(richAlpha)
-                    .padding(28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(text = "🛡️", fontSize = 52.sp)
-
-                Text(
-                    text = "Protected by Digital Monk",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "This page is restricted.\nA parent PIN is required to make changes here.",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.sp
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Button(
-                    onClick = onGoHome,
-                    modifier = Modifier
-                        .alpha(fullButtonAlpha)
-                        .fillMaxWidth(0.75f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF3B82F6)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        "← Go to Home Screen",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp
+                .animateContentSize(animationSpec = tween(durationMillis = 300))
+                .height(targetHeight)
+                .background(Color.Red)
+                // 3. Measure the box continuously as it animates
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    onBoundsUpdate(
+                        android.graphics.Rect(
+                            bounds.left.toInt(),
+                            bounds.top.toInt(),
+                            bounds.right.toInt(),
+                            bounds.bottom.toInt()
+                        )
                     )
                 }
-            }
+        ) {
+            // Your internal text/buttons will go here later
         }
     }
 }

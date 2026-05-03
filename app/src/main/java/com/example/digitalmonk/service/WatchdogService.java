@@ -129,10 +129,13 @@ public class WatchdogService extends Service {
         settingsMonitor = new SettingsAppMonitor(this, new SettingsAppMonitor.SettingsStateListener() {
             @Override
             public void onSettingsOpened(String packageName) {
+
+                // Initial overlay Applied when settings opened
                 SettingsBlockOverlayService.showBottom(WatchdogService.this);
+
                 if (settingsPageReader != null) settingsPageReader.reset();
 
-                // ADD: Schedule an immediate forced read after 1s (root may not be ready at t=0)
+                // Schedule an immediate forced read after 1s (root may not be ready at t=0)
                 settingsHandler.postDelayed(() -> {
                     if (settingsMonitor.isSettingsOpen()) {
                         settingsPageReader.readAndRespond(WatchdogService.this, packageName);
