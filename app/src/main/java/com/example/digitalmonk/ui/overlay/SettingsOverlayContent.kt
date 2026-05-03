@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.sp
 enum class SettingsOverlayStage {
     STRIP,   // 80dp bar — safe page / exploring
     HALF,    // 650dp — initial block on settings open
-    FULL     // full screen — dangerous uninstall page
+    FULL     // full screen — dangerous uninstallation page
 }
 
 @Composable

@@ -16,10 +16,7 @@ import android.view.WindowManager;
 
 import androidx.annotation.Nullable;
 import androidx.compose.runtime.MutableState;
-import androidx.compose.runtime.mutableStateOf;
 import androidx.core.app.NotificationCompat;
-import androidx.lifecycle.setViewTreeLifecycleOwner;
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner;
 
 import com.example.digitalmonk.core.utils.Constants;
 import com.example.digitalmonk.ui.overlay.OverlayBridge;
@@ -27,6 +24,10 @@ import com.example.digitalmonk.ui.overlay.OverlayLifecycleOwner;
 import com.example.digitalmonk.ui.overlay.SettingsOverlayStage;
 
 import androidx.compose.ui.platform.ComposeView;
+import androidx.lifecycle.ViewTreeLifecycleOwner;
+import androidx.savedstate.ViewTreeSavedStateRegistryOwner;
+
+
 
 public class SettingsBlockOverlayService extends Service {
 
@@ -46,10 +47,9 @@ public class SettingsBlockOverlayService extends Service {
     private OverlayLifecycleOwner lifecycleOwner;
     private Handler mainHandler;
 
-    // ── The single state that drives the entire Compose UI ────────────────────
-    // Exposed as a field so OverlayBridge can read and mutate it
-    public static MutableState<SettingsOverlayStage> overlayStage =
-            mutableStateOf(SettingsOverlayStage.HALF);
+
+
+
 
     // ── Static helpers ────────────────────────────────────────────────────────
 
@@ -191,8 +191,8 @@ public class SettingsBlockOverlayService extends Service {
         composeView = new ComposeView(this);
 
         // Attach lifecycle and saved-state owners (required by Compose)
-        composeView.setViewTreeLifecycleOwner(lifecycleOwner);
-        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner);
+        ViewTreeLifecycleOwner.set(composeView, lifecycleOwner);
+        ViewTreeSavedStateRegistryOwner.set(composeView, lifecycleOwner);
 
         // Delegate content to the Kotlin bridge
         OverlayBridge.setContent(composeView, () -> {
@@ -219,7 +219,7 @@ public class SettingsBlockOverlayService extends Service {
     // ── Single method to change stage — this is all WatchdogService calls ─────
 
     private void updateStage(SettingsOverlayStage stage) {
-        overlayStage.setValue(stage);
+        OverlayBridge.setStage(stage);
         Log.d(TAG, "Overlay stage → " + stage.name());
     }
 
