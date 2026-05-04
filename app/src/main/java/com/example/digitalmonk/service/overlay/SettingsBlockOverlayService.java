@@ -136,7 +136,7 @@ public class SettingsBlockOverlayService extends Service {
                     if (!isFullOverlay && isRunning) {
                         updateStage(SettingsOverlayStage.STRIP);
                     }
-                }, 2000L);
+                }, 1000L);
                 break;
 
             case ACTION_HIDE:
