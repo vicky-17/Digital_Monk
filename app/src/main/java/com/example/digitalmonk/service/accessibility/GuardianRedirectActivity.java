@@ -8,7 +8,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
-import com.example.digitalmonk.ui.dashboard.MainActivity;
+import com.example.digitalmonk.ui.MainActivity;
 
 /**
  * GuardianRedirectActivity

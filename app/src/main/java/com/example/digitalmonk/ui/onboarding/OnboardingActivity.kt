@@ -3,7 +3,7 @@ package com.example.digitalmonk.ui.onboarding
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import com.example.digitalmonk.ui.dashboard.MainActivity
+import com.example.digitalmonk.ui.MainActivity
 import com.example.digitalmonk.core.base.BaseActivity
 import com.example.digitalmonk.data.local.prefs.PrefsManager
 import com.example.digitalmonk.ui.auth.PinSetupActivity

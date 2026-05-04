@@ -1,7 +1,8 @@
-package com.example.digitalmonk.ui.dashboard
+package com.example.digitalmonk.ui
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
@@ -51,7 +52,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.digitalmonk.core.base.BaseActivity
 import com.example.digitalmonk.core.utils.PermissionHelper
 import com.example.digitalmonk.core.utils.PersistenceManager
@@ -64,6 +68,7 @@ import com.example.digitalmonk.ui.auth.PinGateScreen
 import com.example.digitalmonk.ui.auth.PinSetupActivity
 import com.example.digitalmonk.ui.components.common.SectionLabel
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
+import kotlinx.coroutines.delay
 
 
 // ── Color palette ─────────────────────────────────────────────────────────────
@@ -113,14 +118,14 @@ class MainActivity : BaseActivity() {
         }
 
         setContent {
-            DigitalMonkTheme {
+            DigitalMonkTheme {           // 👉👉 My app Theme Name 🦋✨
                 AppContent(prefs)
             }
         }
     }
 
-    private fun getPermissionsState(context: android.content.Context): PermissionsState {
-        val sharedPrefs = context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE)
+    private fun getPermissionsState(context: Context): PermissionsState {
+        val sharedPrefs = context.getSharedPreferences("monk_prefs", MODE_PRIVATE)
 
         return PermissionsState(
             isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context),
@@ -155,9 +160,9 @@ class MainActivity : BaseActivity() {
             Dashboard(prefs, onLock = { isUnlocked = false })
         } else {
             PinGateScreen(
-                viewModel = androidx.lifecycle.viewmodel.compose.viewModel(
-                    factory = object : androidx.lifecycle.ViewModelProvider.Factory {
-                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                viewModel = viewModel(
+                    factory = object : ViewModelProvider.Factory {
+                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
                             @Suppress("UNCHECKED_CAST")
                             return AuthViewModel(prefs) as T
                         }
@@ -183,9 +188,9 @@ class MainActivity : BaseActivity() {
 
         LaunchedEffect(refreshKey) {
             permissionsState = getPermissionsState(context)
-            kotlinx.coroutines.delay(500)
+            delay(500)
             permissionsState = getPermissionsState(context)
-            kotlinx.coroutines.delay(500)
+            delay(500)
             permissionsState = getPermissionsState(context)
         }
 
@@ -429,7 +434,9 @@ class MainActivity : BaseActivity() {
                 if (isXiaomiSidebar) {
                     val bgPopupIntent = remember { PersistenceManager.buildMiuiBackgroundPopupIntent(context) }
                     if (bgPopupIntent != null) {
-                        val prefs2 = remember { context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE) }
+                        val prefs2 = remember { context.getSharedPreferences("monk_prefs",
+                            MODE_PRIVATE
+                        ) }
                         SidebarDivider()
                         SidebarPermissionRow(
                             emoji = "🪟",
@@ -880,14 +887,14 @@ class MainActivity : BaseActivity() {
             if (hasOemAutostart) {
                 Spacer(modifier = Modifier.height(10.dp))
                 val oemIntent = remember { PersistenceManager.buildAutostartIntent(context) }
-                val prefs2 = remember { context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE) }
+                val prefs2 = remember { context.getSharedPreferences("monk_prefs", MODE_PRIVATE) }
 
                 StatusCard(
-                    title = "Background Autostart (${android.os.Build.MANUFACTURER})",
+                    title = "Background Autostart (${Build.MANUFACTURER})",
                     description = if (permissionsState.visitedAutostart)
                         "Visited — make sure Digital Monk is toggled ON"
                     else
-                        "Required on ${android.os.Build.MANUFACTURER} — prevents app from being killed",
+                        "Required on ${Build.MANUFACTURER} — prevents app from being killed",
                     isActive = permissionsState.visitedAutostart,
                     onClick = {
                         prefs2.edit().putBoolean("visited_autostart", true).apply()
@@ -901,7 +908,7 @@ class MainActivity : BaseActivity() {
             if (isXiaomi) {
                 val miuiPowerIntent = remember { PersistenceManager.buildMiuiPowerKeeperIntent(context) }
                 if (miuiPowerIntent != null) {
-                    val prefs2 = remember { context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE) }
+                    val prefs2 = remember { context.getSharedPreferences("monk_prefs", MODE_PRIVATE) }
                     Spacer(modifier = Modifier.height(10.dp))
                     StatusCard(
                         title = "MIUI Power Saver",
@@ -1122,7 +1129,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun isAccessibilityEnabled(context: android.content.Context): Boolean {
+    private fun isAccessibilityEnabled(context: Context): Boolean {
         val expectedComponent = ComponentName(context, GuardianAccessibilityService::class.java)
         val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
         val splitter = TextUtils.SimpleStringSplitter(':')
@@ -1326,3 +1333,125 @@ fun AlwaysOnVpnDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
         }
     }
 }
+
+fun formatRemainingTime(ms: Long): String {
+    val totalSec = ms / 1000
+    val d = totalSec / 86400
+    val h = (totalSec % 86400) / 3600
+    val m = (totalSec % 3600) / 60
+    return buildString {
+        if (d > 0) append("${d}d ")
+        if (h > 0) append("${h}h ")
+        append("${m}m")
+    }.trim()
+}
+
+@Composable
+fun LockSettingsDialog(onConfirm: (Long) -> Unit, onDismiss: () -> Unit) {
+    var days by remember { mutableStateOf("") }
+    var hours by remember { mutableStateOf("") }
+    var minutes by remember { mutableStateOf("") }
+    var showConfirmStep by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                if (!showConfirmStep) {
+                    Text("⏳ Lock Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Set duration. You will NOT be able to disable any protection during this time.", fontSize = 13.sp, color = Color(0xFF94A3B8), lineHeight = 18.sp)
+                    Spacer(Modifier.height(20.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = days, onValueChange = { days = it },
+                            label = { Text("Days", color = Color(0xFF64748B)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF3B82F6),
+                                unfocusedBorderColor = Color(0xFF334155),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = hours, onValueChange = { hours = it },
+                            label = { Text("Hours", color = Color(0xFF64748B)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF3B82F6),
+                                unfocusedBorderColor = Color(0xFF334155),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = minutes, onValueChange = { minutes = it },
+                            label = { Text("Mins", color = Color(0xFF64748B)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF3B82F6),
+                                unfocusedBorderColor = Color(0xFF334155),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+                    val totalMs = (days.toLongOrNull() ?: 0L) * 86_400_000L +
+                            (hours.toLongOrNull() ?: 0L) * 3_600_000L +
+                            (minutes.toLongOrNull() ?: 0L) * 60_000L
+                    Button(
+                        onClick = { if (totalMs > 0) showConfirmStep = true },
+                        enabled = totalMs > 0,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Next →", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                        Text("Cancel", color = Color(0xFF64748B), fontSize = 14.sp)
+                    }
+
+                } else {
+                    val d = days.toLongOrNull() ?: 0L
+                    val h = hours.toLongOrNull() ?: 0L
+                    val m = minutes.toLongOrNull() ?: 0L
+                    val totalMs = d * 86_400_000L + h * 3_600_000L + m * 60_000L
+
+                    Text("⚠️ Are you sure?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "You cannot disable any protections for ${if (d > 0) "${d}d " else ""}${if (h > 0) "${h}h " else ""}${m}m. This cannot be undone.",
+                        fontSize = 14.sp, color = Color(0xFF94A3B8), lineHeight = 20.sp
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = { onConfirm(totalMs) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("🔒 Confirm Lock", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = { showConfirmStep = false }, modifier = Modifier.fillMaxWidth()) {
+                        Text("← Go Back", color = Color(0xFF64748B), fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+

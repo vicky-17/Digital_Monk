@@ -1,7 +1,6 @@
 package com.example.digitalmonk.service.vpn;
 
 import android.app.Notification;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -9,9 +8,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.ServiceInfo;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.IBinder;
@@ -25,15 +21,12 @@ import com.example.digitalmonk.core.utils.Constants;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.vpn.heartbeat.VpnHeartBeatEntity;
 import com.example.digitalmonk.service.vpn.heartbeat.VpnHeartbeatMonitorWorker;
-import com.example.digitalmonk.ui.dashboard.MainActivity;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 
 /**
  * Why we made this file:

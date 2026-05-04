@@ -28,7 +28,7 @@ import com.example.digitalmonk.service.monitor.SettingsAppMonitor;
 import com.example.digitalmonk.service.monitor.SettingsPageReader;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
-import com.example.digitalmonk.ui.dashboard.MainActivity;
+import com.example.digitalmonk.ui.MainActivity;
 
 /**
  * WatchdogService — Updated for UsageStats-driven settings detection

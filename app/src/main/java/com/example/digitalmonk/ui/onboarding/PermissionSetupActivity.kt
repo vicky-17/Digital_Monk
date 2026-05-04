@@ -31,7 +31,7 @@ import com.example.digitalmonk.core.utils.PermissionHelper
 import com.example.digitalmonk.core.utils.PersistenceManager
 import com.example.digitalmonk.receiver.MonkDeviceAdminReceiver
 import com.example.digitalmonk.service.WatchdogService
-import com.example.digitalmonk.ui.dashboard.MainActivity
+import com.example.digitalmonk.ui.MainActivity
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
 
 class PermissionSetupActivity : BaseActivity() {
