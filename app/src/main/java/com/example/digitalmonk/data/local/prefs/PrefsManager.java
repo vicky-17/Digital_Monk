@@ -43,6 +43,8 @@ public class PrefsManager {
     private static final String KEY_IS_PREMIUM = "is_premium";
     private static final String KEY_PREMIUM_EXPIRY = "premium_expiry";
 
+    private static final String KEY_LOCK_UNTIL_TIMESTAMP = "lock_until_timestamp";
+
     public PrefsManager(Context context) {
         this.prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
     }
@@ -232,4 +234,25 @@ public class PrefsManager {
     public void setYoutubeFilterEnabled(boolean value) {
         prefs.edit().putBoolean("youtube_filter_enabled", value).apply();
     }
+
+    public void setLockUntil(long epochMs) {
+        prefs.edit().putLong(KEY_LOCK_UNTIL_TIMESTAMP, epochMs).apply();
+    }
+
+    public long getLockUntil() {
+        return prefs.getLong(KEY_LOCK_UNTIL_TIMESTAMP, 0L);
+    }
+
+    public boolean isSettingsLocked() {
+        return System.currentTimeMillis() < getLockUntil();
+    }
+
+
+
+
+
+
+
+
+
 }

@@ -57,5 +57,8 @@ public final class Constants {
     public static final String EXTRA_TARGET_SCREEN = "extra_target_screen";
     public static final String EXTRA_BLOCKED_PACKAGE = "extra_blocked_package";
 
+    public static final int NOTIFICATION_ID_LOCK_TIMER = 1005;
+
+
 
 }

@@ -212,6 +212,7 @@ class MainActivity : BaseActivity() {
             DashboardContent(
                 prefs = prefs,
                 permissionsState = permissionsState,
+                refreshKey = refreshKey,
                 onRefresh = { refreshKey = System.currentTimeMillis() },
                 onLock = onLock,
                 onMenuClick = { sidebarOpen = true }
@@ -501,6 +502,15 @@ class MainActivity : BaseActivity() {
                     subtitle = "Some phones kill VPN willy-nilly. We'll attempt to keep it on for as long as possible.",
                     isEnabled = keepVpnAlive,
                     onToggle = { newValue ->
+                        val prefsCheck = PrefsManager(context)
+                        if (prefsCheck.isSettingsLocked) {
+                            Toast.makeText(
+                                context,
+                                "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            return@SidebarToggleRow
+                        }
                         if (newValue) {
                             // Show info dialog before enabling
                             showKeepAliveInfo = true
@@ -520,6 +530,15 @@ class MainActivity : BaseActivity() {
                     subtitle = "Prevents another VPN from overriding Digital Monk.",
                     isEnabled = preventVpnOverride,
                     onToggle = { newValue ->
+                        val prefsCheck = PrefsManager(context)
+                        if (prefsCheck.isSettingsLocked) {
+                            Toast.makeText(
+                                context,
+                                "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            return@SidebarToggleRow
+                        }
                         if (newValue) {
                             // Show confirmation dialog before enabling (like Detoxify)
                             showPreventDialog = true
@@ -722,6 +741,7 @@ class MainActivity : BaseActivity() {
     fun DashboardContent(
         prefs: PrefsManager,
         permissionsState: PermissionsState,
+        refreshKey: Long,
         onRefresh: () -> Unit,
         onLock: () -> Unit,
         onMenuClick: () -> Unit
@@ -914,7 +934,19 @@ class MainActivity : BaseActivity() {
                 description = "Blocks YouTube Shorts, Instagram Reels, TikTok",
                 emoji = "📵",
                 isEnabled = blockShorts,
-                onToggle = { blockShorts = it; prefs.setBlockShorts(it) }
+                onToggle = { newVal ->
+                    val prefsCheck = PrefsManager(context)
+                    if (prefsCheck.isSettingsLocked) {
+                        Toast.makeText(
+                            context,
+                            "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@ToggleCard
+                    }
+                    blockShorts = newVal
+                    prefs.setBlockShorts(newVal)
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -925,6 +957,15 @@ class MainActivity : BaseActivity() {
                 emoji = "🛡️",
                 isEnabled = safeSearchEnabled,
                 onToggle = { isChecked ->
+                    val prefsCheck = PrefsManager(context)
+                    if (prefsCheck.isSettingsLocked) {
+                        Toast.makeText(
+                            context,
+                            "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@ToggleCard
+                    }
                     if (isChecked) {
                         val vpnIntent = VpnService.prepare(context)
                         if (vpnIntent != null) {
@@ -944,6 +985,41 @@ class MainActivity : BaseActivity() {
                     }
                 }
             )
+
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            var showLockDialog by remember { mutableStateOf(false) }
+            val isLocked = remember(refreshKey) { PrefsManager(context).isSettingsLocked }
+
+            ActionCard(
+                title = if (isLocked) "🔒 Settings Locked" else "Lock Settings",
+                description = if (isLocked) {
+                    val remaining = PrefsManager(context).lockUntil - System.currentTimeMillis()
+                    "Unlocks in ${formatRemainingTime(remaining)}"
+                } else {
+                    "Prevent disabling protections for a set period"
+                },
+                emoji = "⏳",
+                onClick = { if (!isLocked) showLockDialog = true }
+            )
+
+            if (showLockDialog) {
+                LockSettingsDialog(
+                    onConfirm = { durationMs ->
+                        val until = System.currentTimeMillis() + durationMs
+                        PrefsManager(context).setLockUntil(until)
+                        showLockDialog = false
+                        onRefresh()
+                    },
+                    onDismiss = { showLockDialog = false }
+                )
+            }
+
+
+
+
+
 
             Spacer(modifier = Modifier.height(24.dp))
 
