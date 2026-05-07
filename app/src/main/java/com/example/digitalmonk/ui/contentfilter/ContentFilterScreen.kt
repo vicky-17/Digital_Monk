@@ -69,10 +69,11 @@ fun ContentFilterScreen() {
             SectionLabel("Web Protection")
 
             ToggleCard(
+                emoji ="🌐",
                 title = "Enforce Safe Search",
-                description = "Forces Google, Bing, and DuckDuckGo into strict filtering mode.",
-                isChecked = isSafeSearchEnabled,
-                onCheckedChange = { newValue ->
+                subtitle = "Forces Google, Bing, and DuckDuckGo into strict filtering mode.",
+                isEnabled = isSafeSearchEnabled,
+                onToggle = { newValue ->
                     pendingToggle = {
                         prefs.isSafeSearchEnabled = newValue
                         isSafeSearchEnabled = newValue
@@ -86,10 +87,11 @@ fun ContentFilterScreen() {
             SectionLabel("Social Media")
 
             ToggleCard(
+                emoji = "▶️",
                 title = "YouTube Restricted Mode",
-                description = "Hides potentially mature videos and filters comments on YouTube.",
-                isChecked = isYoutubeFilterEnabled,
-                onCheckedChange = { newValue ->
+                subtitle = "Hides potentially mature videos and filters comments on YouTube.",
+                isEnabled = isYoutubeFilterEnabled,
+                onToggle = { newValue ->
                     pendingToggle = {
                         prefs.isYoutubeFilterEnabled = newValue
                         isYoutubeFilterEnabled = newValue

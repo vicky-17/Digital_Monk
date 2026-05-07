@@ -112,7 +112,7 @@ public class SettingsBlockOverlayService extends Service {
                     // Show the overlay at HALF stage (650dp initial blocker)
                     mainHandler.post(() -> {
                         showOverlay();
-                        updateStage(SettingsOverlayStage.HALF);
+                        updateStage(SettingsOverlayStage.STRIP);
                     });
                 }
                 break;
