@@ -270,10 +270,10 @@ public class WatchdogService extends Service {
 
         if (settingsMonitor.isSettingsOpen()) {
             String pkg = settingsMonitor.getCurrentSettingsPackage();
+            Log.d("MONK_TRACE", "performSettingsPoll() → settings IS open, pkg=" + pkg + " → calling readAndRespond");
             boolean isDangerous = settingsPageReader.readAndRespond(this, pkg);
+            Log.d("MONK_TRACE", "performSettingsPoll() → readAndRespond result: isDangerous=" + isDangerous);
 
-            // If page is safe (not dangerous), shrink overlay to exploring strip.
-            // Only shrink if we are not already in full overlay mode (dangerous page was confirmed).
             if (!isDangerous && !SettingsBlockOverlayService.isFullOverlay
                     && SettingsBlockOverlayService.isRunning) {
                 SettingsBlockOverlayService.shrinkToBottom(this);

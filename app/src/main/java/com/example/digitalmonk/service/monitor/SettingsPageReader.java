@@ -35,48 +35,65 @@ public class SettingsPageReader {
             ))
     );
 
+    // CHANGED: replaced button texts with body texts visible in accessibility tree
+    // MIUI deliberately hides action buttons from accessibility tree as a security measure.
+    // We use body text that is always rendered as TextView instead.
     private static final Set<String> DANGER_BUTTONS = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
+                    // Device Admin page — body text confirmed visible in accessibility dump
+                    "This admin app is active",
+                    // App Info page — buttons still visible on stock Android
                     "Force stop",
                     "Uninstall",
-                    "Deactivate",
-                    "Deactivate & uninstall",
-                    "Deactivate and uninstall"
+                    "Storage & cache",
+                    "Storage and cache"
             ))
     );
 
-    private volatile boolean escapeInProgress    = false;
+    private volatile boolean escapeInProgress    = true;
     private volatile long    lastEscapeAttemptMs = 0L;
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    public boolean  readAndRespond(Context context, String settingsPkg) {
-        if (escapeInProgress) return false;
+    public boolean readAndRespond(Context context, String settingsPkg) {
+        Log.d("MONK_TRACE", "readAndRespond() called → pkg=" + settingsPkg
+                + " | escapeInProgress=" + escapeInProgress);
+
+        if (escapeInProgress) {
+            Log.d("MONK_TRACE", "readAndRespond() → SKIP: escapeInProgress");
+            return false;
+        }
 
         long now = System.currentTimeMillis();
-        if (now - lastEscapeAttemptMs < ESCAPE_COOLDOWN_MS) return false;
-
-        // New: check root first; only skip root check if root is null
-        if ("com.miui.securitycenter".equals(settingsPkg)) {
-            AccessibilityNodeInfo root = getAccessibilityRoot();
-            if (root != null && isDangerousSettingsPage(root, settingsPkg)) {
-                Log.w(TAG, "🚨 miui.securitycenter → escape");
-                lastEscapeAttemptMs = now;
-                launchRedirectActivity(context);
-                return true; // ← dangerous, redirected
-            }
-            return false; // ← safe, just exploring
+        if (now - lastEscapeAttemptMs < ESCAPE_COOLDOWN_MS) {
+            Log.d("MONK_TRACE", "readAndRespond() → SKIP: cooldown active, remaining="
+                    + (ESCAPE_COOLDOWN_MS - (now - lastEscapeAttemptMs)) + "ms");
+            return false;
         }
 
         AccessibilityNodeInfo root = getAccessibilityRoot();
+        Log.d("MONK_TRACE", "readAndRespond() → root=" + (root != null ? "AVAILABLE" : "NULL"));
+
+        if ("com.miui.securitycenter".equals(settingsPkg)) {
+            if (root != null && isDangerousSettingsPage(root, settingsPkg)) {
+                Log.w("MONK_TRACE", "readAndRespond() → DANGEROUS (miui path) → launching redirect");
+                lastEscapeAttemptMs = now;
+                launchRedirectActivity(context);
+                return true;
+            }
+            Log.d("MONK_TRACE", "readAndRespond() → miui path, not dangerous or root null");
+            return false;
+        }
+
         if (isDangerousSettingsPage(root, settingsPkg)) {
-            Log.w(TAG, "🚨 Dangerous page confirmed in " + settingsPkg);
+            Log.w("MONK_TRACE", "readAndRespond() → DANGEROUS → launching redirect");
             lastEscapeAttemptMs = now;
             launchRedirectActivity(context);
-            return true; // ← dangerous, redirected
+            return true;
         }
-        return false; // ← safe, just exploring
 
+        Log.d("MONK_TRACE", "readAndRespond() → safe page");
+        return false;
     }
 
     public void reset() {
@@ -86,14 +103,6 @@ public class SettingsPageReader {
 
     // ── Launch redirect activity ──────────────────────────────────────────────
 
-    /**
-     * Launches GuardianRedirectActivity which takes over the screen
-     * and runs the HOME → RECENTS → CLEAR → HOME sequence.
-     *
-     * FLAG_ACTIVITY_NEW_TASK         — required from non-Activity context
-     * FLAG_ACTIVITY_NO_ANIMATION     — instant switch, no slide animation
-     * FLAG_ACTIVITY_CLEAR_TOP        — clears any existing instance
-     */
     private void launchRedirectActivity(Context context) {
         escapeInProgress = true;
         try {
@@ -111,8 +120,6 @@ public class SettingsPageReader {
             escapeInProgress = false;
         }
 
-        // Release escapeInProgress after the full sequence duration
-        // GuardianRedirectActivity finishes at ~900ms, add buffer
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             escapeInProgress = false;
         }, 1500L);
@@ -121,11 +128,33 @@ public class SettingsPageReader {
     // ── Detection ─────────────────────────────────────────────────────────────
 
     private boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName) {
-        if (packageName == null || !SETTINGS_PACKAGES.contains(packageName)) return false;
-        if (root == null) return false;
-        if (!hasAnyText(root, DANGEROUS_TITLES)) return false;
-        if (!hasExactText(root, "Digital Monk")) return false;
-        return hasAnyText(root, DANGER_BUTTONS);
+        Log.d("MONK_TRACE", "isDangerousSettingsPage() → pkg=" + packageName + " | root=" + (root != null ? "ok" : "null"));
+
+        if (packageName == null || !SETTINGS_PACKAGES.contains(packageName)) {
+            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE1 FAIL: not a settings package");
+            return false;
+        }
+        if (root == null) {
+            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE2 FAIL: root is null");
+            return false;
+        }
+        if (!hasAnyText(root, DANGEROUS_TITLES)) {
+            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE3 FAIL: no dangerous title found");
+            return false;
+        }
+        if (!hasExactText(root, "Digital Monk")) {
+            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE4 FAIL: 'Digital Monk' text not found");
+            return false;
+        }
+        // CHANGED: Gate 5 now checks body text instead of buttons
+        // MIUI hides action buttons from accessibility tree — confirmed via UI dump
+        if (!hasAnyText(root, DANGER_BUTTONS)) {
+            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE5 FAIL: no confirmation text found (buttons hidden by MIUI)");
+            return false;
+        }
+
+        Log.w("MONK_TRACE", "isDangerousSettingsPage() → ALL GATES PASSED ✓");
+        return true;
     }
 
     private boolean hasAnyText(AccessibilityNodeInfo root, Set<String> candidates) {
@@ -147,11 +176,34 @@ public class SettingsPageReader {
 
     private AccessibilityNodeInfo getAccessibilityRoot() {
         long connected = GuardianAccessibilityService.serviceConnectedTimestamp;
-        if (connected == 0) return null;
-        if (System.currentTimeMillis() - connected < ACCESSIBILITY_GRACE_MS) return null;
-        long lastEvent = GuardianAccessibilityService.lastEventTimestamp;
-        if (lastEvent == 0) return null;
-        if (System.currentTimeMillis() - lastEvent > 15_000L) return null;
-        return GuardianAccessibilityService.getCurrentRootNode();
+        long lastEvent  = GuardianAccessibilityService.lastEventTimestamp;
+        long now        = System.currentTimeMillis();
+
+        Log.d("MONK_TRACE", "getAccessibilityRoot() → connected=" + connected
+                + " | timeSinceConnected=" + (connected > 0 ? (now - connected) : "N/A")
+                + " | lastEvent=" + lastEvent
+                + " | timeSinceLastEvent=" + (lastEvent > 0 ? (now - lastEvent) : "N/A")
+                + " | graceMs=" + ACCESSIBILITY_GRACE_MS);
+
+        if (connected == 0) {
+            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: service never connected");
+            return null;
+        }
+        if (now - connected < ACCESSIBILITY_GRACE_MS) {
+            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: still in grace period");
+            return null;
+        }
+        if (lastEvent == 0) {
+            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: no events received yet");
+            return null;
+        }
+        if (now - lastEvent > 15_000L) {
+            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: last event too old (" + (now - lastEvent) + "ms ago)");
+            return null;
+        }
+
+        AccessibilityNodeInfo root = GuardianAccessibilityService.getCurrentRootNode();
+        Log.d("MONK_TRACE", "getAccessibilityRoot() → " + (root != null ? "GOT ROOT" : "getCurrentRootNode() returned null"));
+        return root;
     }
 }

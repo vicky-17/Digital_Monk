@@ -8,64 +8,50 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Precisely detects Android Settings pages that can uninstall or deactivate Digital Monk.
- *
- * DETECTION STRATEGY (based on device screenshots):
- * ─────────────────────────────────────────────────────────────────────────────
- * Page 1 — App Info (com.miui.securitycenter or com.android.settings):
- *   Title: "App info" + "Digital Monk" visible + "Force stop" / "Uninstall" present
- *
- * Page 2 — Device Admin (com.android.settings):
- *   Title: "Device admin app" + "Digital Monk" visible + "Deactivate & uninstall" present
- *
- * PERFORMANCE:
- *   - Package gate first  → O(1) HashSet lookup, bails immediately if not settings
- *   - findAccessibilityNodeInfosByText() → system-indexed, NOT manual recursion
- *   - All 4 conditions must pass → eliminates false positives completely
- *   - Zero manual tree traversal → no ANR risk
- * ─────────────────────────────────────────────────────────────────────────────
- */
 public class UninstallerDetector {
 
     // ── Settings packages that host dangerous pages ───────────────────────────
     private static final Set<String> SETTINGS_PACKAGES = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
-                    "com.miui.securitycenter",    // MIUI App Info
-                    "com.android.settings",       // Stock / MIUI Settings
-                    "com.google.android.settings" // Pixel Settings
+                    "com.miui.securitycenter",
+                    "com.android.settings",
+                    "com.google.android.settings"
             ))
     );
 
-    // ── Danger button texts — exact matches from screenshots ─────────────────
-    private static final Set<String> DANGER_BUTTON_TEXTS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList(
-                    "Force stop",             // App Info bottom bar
-                    "Uninstall",              // App Info bottom bar
-                    "Deactivate & uninstall"  // Device Admin page
-            ))
-    );
-
-    // ── Page title anchors — confirmed from screenshots ───────────────────────
+    // ── Page title anchors ────────────────────────────────────────────────────
     private static final Set<String> DANGEROUS_PAGE_TITLES = Collections.unmodifiableSet(
             new HashSet<>(Arrays.asList(
-                    "App info",         // Screenshot 1
-                    "Device admin app"  // Screenshot 2
+                    "App info",
+                    "Application info",
+                    "Device admin app"
+            ))
+    );
+
+    // ── Confirmation anchors — text visible on page that confirms danger ──────
+    // Used instead of buttons (MIUI hides buttons from accessibility tree)
+    private static final Set<String> DANGER_CONFIRM_TEXTS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    // Device Admin page — always present when admin is active
+                    "This admin app is active",
+                    // App Info page — always present
+                    "Force stop",        // still try — stock Android shows it
+                    "Uninstall",         // still try — stock Android shows it
+                    "Storage & cache",   // unique to App Info page
+                    "Storage and cache"  // alternate phrasing
             ))
     );
 
     private UninstallerDetector() {}
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PUBLIC API
-    // ─────────────────────────────────────────────────────────────────────────
-
     /**
-     * Returns true ONLY when ALL FOUR conditions are met:
+     * Returns true when ALL conditions are met:
      *   1. Package is a known settings app
-     *   2. Page title is "App info" or "Device admin app"
-     *   3. "Digital Monk" text is visible on screen
-     *   4. A danger button is present (Force stop / Uninstall / Deactivate & uninstall)
+     *   2. Root node is available
+     *   3. Page title is a known dangerous title
+     *   4. "Digital Monk" text is visible on screen
+     *   5. A confirmation anchor text is present
+     *      (buttons are hidden on MIUI — we use body text instead)
      */
     public static boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName) {
 
@@ -75,19 +61,18 @@ public class UninstallerDetector {
         // Gate 2
         if (root == null) return false;
 
-        // Gate 3 — page title check (system-indexed lookup)
+        // Gate 3 — page title
         if (!hasAnyText(root, DANGEROUS_PAGE_TITLES)) return false;
 
-        // Gate 4 — our app must be on screen
+        // Gate 4 — our app name must be visible
         if (!hasExactText(root, "Digital Monk")) return false;
 
-        // Gate 5 — danger button must be visible
-        return hasAnyText(root, DANGER_BUTTON_TEXTS);
+        // Gate 5 — confirm we are on the right page via body text
+        // (MIUI hides action buttons from accessibility tree — use visible body text instead)
+        return hasAnyText(root, DANGER_CONFIRM_TEXTS);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PRIVATE HELPERS
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private static boolean hasAnyText(AccessibilityNodeInfo root, Set<String> candidates) {
         for (String candidate : candidates) {
@@ -96,10 +81,6 @@ public class UninstallerDetector {
         return false;
     }
 
-    /**
-     * Uses the system AT node index — fast O(log n), no manual recursion.
-     * Wrapped in try/catch because MIUI recycles nodes mid-call.
-     */
     private static boolean hasExactText(AccessibilityNodeInfo root, String text) {
         try {
             if (root == null || text == null) return false;

@@ -11,11 +11,9 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Gravity;
-import android.view.View;
 import android.view.WindowManager;
 
 import androidx.annotation.Nullable;
-import androidx.compose.runtime.MutableState;
 import androidx.core.app.NotificationCompat;
 
 import com.example.digitalmonk.core.utils.Constants;
@@ -112,7 +110,7 @@ public class SettingsBlockOverlayService extends Service {
                     // Show the overlay at HALF stage (650dp initial blocker)
                     mainHandler.post(() -> {
                         showOverlay();
-                        updateStage(SettingsOverlayStage.STRIP);
+                        updateStage(SettingsOverlayStage.HALF);
                     });
                 }
                 break;

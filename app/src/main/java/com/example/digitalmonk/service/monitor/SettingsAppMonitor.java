@@ -82,6 +82,8 @@ public class SettingsAppMonitor {
         String foreground = getForegroundPackage();
         boolean isSettingsNow = foreground != null && SETTINGS_PACKAGES.contains(foreground);
 
+        Log.d("MONK_TRACE", "poll() → foreground=" + foreground + " | isSettingsNow=" + isSettingsNow + " | settingsCurrentlyOpen=" + settingsCurrentlyOpen);
+
         if (isSettingsNow && !settingsCurrentlyOpen) {
             notSettingsCount = 0;
             settingsCurrentlyOpen = true;
@@ -165,6 +167,8 @@ public class SettingsAppMonitor {
                 }
             }
             Log.d("MONK_DEBUG", "getForegroundPackage() returning: " + lastPkg);
+
+            Log.d("MONK_TRACE", "getForegroundPackage() → returning: " + lastPkg + " | lastTime=" + lastTime);
 
             return lastPkg;
 

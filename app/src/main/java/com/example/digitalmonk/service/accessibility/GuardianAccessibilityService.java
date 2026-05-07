@@ -40,7 +40,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
      * Filter logcat by tag MONK_UI_DUMP to see the output.
      * Remember to set back to false before release.
      */
-    public static volatile boolean DEBUG_DUMP_UI = false;
+    public static volatile boolean DEBUG_DUMP_UI = true;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Internal State
