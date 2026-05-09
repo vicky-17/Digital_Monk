@@ -30,23 +30,20 @@ public class AlarmScheduler {
                     return;
                 }
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-            } else {
-                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi);
-            }
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
             Log.i(TAG, "Alarm scheduled in 3 min");
         } catch (Exception e) {
             Log.e(TAG, "Failed to schedule alarm", e);
         }
     }
 
-    public static void cancel(Context context) {
-        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarmManager != null) {
-            alarmManager.cancel(buildPendingIntent(context));
-        }
-    }
+//    @SuppressWarnings("unused")
+//    public static void cancel(Context context) {
+//        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+//        if (alarmManager != null) {
+//            alarmManager.cancel(buildPendingIntent(context));
+//        }
+//    }
 
     private static PendingIntent buildPendingIntent(Context context) {
         Intent intent = new Intent(context, AlarmRestartReceiver.class);

@@ -34,16 +34,16 @@ import com.example.digitalmonk.ui.MainActivity;
  * WatchdogService — Updated for UsageStats-driven settings detection
  * ─────────────────────────────────────────────────────────────────────────────
  * TWO LOOPS now run on separate threads:
- *
+
  * 1. HEALTH CHECK LOOP (every 30s, existing)
  *    - VPN alive check
  *    - Accessibility frozen check → GuardianOverlayService
- *
+
  * 2. SETTINGS DETECTION LOOP (every 300ms, NEW)
  *    - SettingsAppMonitor.poll() → detects settings open/close via UsageStats
  *    - SettingsPageReader.readAndRespond() → reads page content if settings open
  *    - Drives SettingsBlockOverlayService state machine
- *
+
  * Why 300ms? Fast enough to show bottom overlay before user can tap Uninstall
  * (requires ~500ms of deliberate navigation). Cheap enough: UsageStats query
  * on 3s window typically processes <10 events.
@@ -78,11 +78,8 @@ public class WatchdogService extends Service {
     public static void start(Context context) {
         Intent intent = new Intent(context, WatchdogService.class);
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent);
-            } else {
-                context.startService(intent);
-            }
+            context.startForegroundService(intent);
+            context.startService(intent);
         } catch (Exception e) {
             Log.e(TAG, "Failed to start WatchdogService", e);
         }
@@ -92,9 +89,7 @@ public class WatchdogService extends Service {
         JobScheduler js = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (js == null) return;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            if (js.getPendingJob(WATCHDOG_JOB_ID) != null) return;
-        }
+        if (js.getPendingJob(WATCHDOG_JOB_ID) != null) return;
 
         JobInfo job = new JobInfo.Builder(
                 WATCHDOG_JOB_ID,
@@ -241,8 +236,7 @@ public class WatchdogService extends Service {
             Log.w(TAG, "⚠️ DnsVpnService dead — restarting");
             try {
                 Intent i = new Intent(this, DnsVpnService.class);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i);
-                else startService(i);
+                startForegroundService(i);
             } catch (Exception e) {
                 Log.e(TAG, "VPN restart failed", e);
             }
