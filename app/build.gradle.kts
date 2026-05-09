@@ -1,10 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    // Uncomment when adding Hilt:
-    // id("com.google.dagger.hilt.android")
-    // id("com.google.devtools.ksp")
 }
 
 android {

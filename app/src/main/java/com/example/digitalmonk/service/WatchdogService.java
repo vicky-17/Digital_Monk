@@ -202,7 +202,7 @@ public class WatchdogService extends Service {
         );
         AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         if (am != null) {
-            am.set(AlarmManager.ELAPSED_REALTIME,
+            am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME,
                     SystemClock.elapsedRealtime() + 3000L, pi);
         }
         super.onTaskRemoved(rootIntent);

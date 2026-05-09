@@ -20,10 +20,16 @@ public class AlarmScheduler {
         if (alarmManager == null) return;
 
         PendingIntent pi = buildPendingIntent(context);
-
         long triggerAt = System.currentTimeMillis() + INTERVAL_MS;
 
         try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (!alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                    Log.i(TAG, "Alarm scheduled (inexact fallback) in 3 min");
+                    return;
+                }
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
             } else {
