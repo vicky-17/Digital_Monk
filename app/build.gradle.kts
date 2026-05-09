@@ -55,7 +55,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation("androidx.appcompat:appcompat:1.7.1")
 
     // ── Compose ─────────────────────────────────────────────────────────────
     implementation(platform(libs.androidx.compose.bom))
@@ -63,36 +62,21 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.compose.material:material-icons-extended")
 
-    // ── Navigation ───────────────────────────────────────────────────────────
-    implementation("androidx.navigation:navigation-compose:2.9.8")
-
-    // ── Coroutines ───────────────────────────────────────────────────────────
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-
-    // ── Room (local database for app rules, usage logs) ──────────────────────
-    implementation("androidx.room:room-runtime:2.8.4")
-    implementation("androidx.room:room-ktx:2.6.1")
-    // annotationProcessor("androidx.room:room-compiler:2.6.1")  // use KSP instead:
-    // ksp("androidx.room:room-compiler:2.6.1")
-
-    // ── WorkManager (background tasks, blocklist sync) ───────────────────────
-    implementation("androidx.work:work-runtime-ktx:2.11.2")
-
-    // ── Secure Storage (for PIN, premium state) ──────────────────────────────
-    implementation("androidx.security:security-crypto:1.1.0")
-
-    // ── DataStore (modern prefs — use for new features) ──────────────────────
-    implementation("androidx.datastore:datastore-preferences:1.2.1")
-
-    // ── Gson (kept for compatibility) ─────────────────────────────────────────
-    implementation("com.google.code.gson:gson:2.14.0")
-
-
-    implementation("androidx.lifecycle:lifecycle-service:2.8.4")
-    implementation("androidx.savedstate:savedstate:1.4.0")
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.gson)
+    implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.savedstate)
 
     // ── Testing ──────────────────────────────────────────────────────────────
     testImplementation(libs.junit)
