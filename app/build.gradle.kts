@@ -36,11 +36,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
 
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-        }
-    }
 
 
     buildFeatures {
@@ -63,7 +58,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material3.icons.extended)
     implementation(libs.androidx.lifecycle.service)
+
 
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -89,4 +86,11 @@ dependencies {
 
 tasks.withType<JavaCompile> {
     options.compilerArgs.add("-Xlint:deprecation")
+}
+
+// Place this at the root level (e.g., bottom of the file)
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    }
 }
