@@ -46,7 +46,12 @@ public class DnsVpnService extends VpnService {
 
     private static final String VPN_ADDRESS = "10.0.0.1";
     private static final String VPN_DNS = "10.0.0.2";
+
+
     private static final String UPSTREAM_DNS = "8.8.8.8";
+
+    private static final String UPSTREAM_DNS_PRIMARY   = "185.228.168.168";
+    private static final String UPSTREAM_DNS_SECONDARY = "185.228.169.168";
     private static final int DNS_PORT = 53;
     private static final int DNS_TIMEOUT_MS = 3000;
 
@@ -214,25 +219,35 @@ public class DnsVpnService extends VpnService {
     }
 
     private byte[] forwardToUpstream(DnsPacketParser.DnsQuery query) {
-        try (DatagramSocket socket = new DatagramSocket()) {
-            protect(socket);
-            socket.setSoTimeout(DNS_TIMEOUT_MS);
+        // Try primary, then secondary
+        for (String dns : new String[]{UPSTREAM_DNS_PRIMARY, UPSTREAM_DNS_SECONDARY}) {
+            try (DatagramSocket
+                         socket = new DatagramSocket()) {
+                protect(socket);
+                socket.setSoTimeout(DNS_TIMEOUT_MS);
 
-            byte[] dnsPayload = Arrays.copyOfRange(query.rawPacket, query.dnsPayloadOffset, query.rawLength);
-            InetAddress upstreamAddress = InetAddress.getByName(UPSTREAM_DNS);
+                byte[] dnsPayload = Arrays.copyOfRange(
+                        query.rawPacket, query.dnsPayloadOffset, query.rawLength);
+                InetAddress upstreamAddress = InetAddress.getByName(dns);
 
-            DatagramPacket sendPacket = new DatagramPacket(dnsPayload, dnsPayload.length, upstreamAddress, DNS_PORT);
-            socket.send(sendPacket);
+                DatagramPacket sendPacket = new DatagramPacket(
+                        dnsPayload, dnsPayload.length, upstreamAddress, DNS_PORT);
+                socket.send(sendPacket);
 
-            byte[] responseBuffer = new byte[4096];
-            DatagramPacket receivePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
-            socket.receive(receivePacket);
+                byte[] responseBuffer = new byte[4096];
+                DatagramPacket receivePacket = new DatagramPacket(
+                        responseBuffer, responseBuffer.length);
+                socket.receive(receivePacket);
 
-            return DnsPacketParser.wrapUpstreamResponse(query,
-                    Arrays.copyOf(receivePacket.getData(), receivePacket.getLength()));
-        } catch (Exception e) {
-            return DnsPacketParser.buildNxDomainResponse(query);
+                return DnsPacketParser.wrapUpstreamResponse(query,
+                        Arrays.copyOf(receivePacket.getData(), receivePacket.getLength()));
+
+            } catch (Exception e) {
+                Log.w(TAG, "DNS forward failed to " + dns + ", trying fallback: " + e.getMessage());
+            }
         }
+        // Both failed — return NXDOMAIN rather than silently dropping
+        return DnsPacketParser.buildNxDomainResponse(query);
     }
 
     // ── Heartbeat & Helper Methods ──────────────────────────────────────────
