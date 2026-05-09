@@ -141,7 +141,7 @@ public class SettingsBlockOverlayService extends Service {
                 mainHandler.post(() -> {
                     updateStage(SettingsOverlayStage.HIDE);
                     removeOverlay();
-                    stopForeground(true);
+                    stopForeground(Service.STOP_FOREGROUND_REMOVE);
                     stopSelf();
                     isRunning     = false;
                     isFullOverlay = false;

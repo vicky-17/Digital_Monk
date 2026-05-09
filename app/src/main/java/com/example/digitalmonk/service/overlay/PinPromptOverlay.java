@@ -64,9 +64,7 @@ public class PinPromptOverlay {
         try {
             overlayView = createProgrammaticView(reason, callback);
 
-            int layoutFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    : WindowManager.LayoutParams.TYPE_PHONE;
+            int layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
 
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,

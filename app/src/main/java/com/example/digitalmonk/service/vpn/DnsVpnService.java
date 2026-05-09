@@ -1,6 +1,7 @@
 package com.example.digitalmonk.service.vpn;
 
 import android.app.Notification;
+import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -179,7 +180,7 @@ public class DnsVpnService extends VpnService {
         try { if (vpnInterface != null) vpnInterface.close(); } catch (Exception ignored) {}
 
         vpnInterface = null;
-        stopForeground(true);
+        stopForeground(Service.STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
 

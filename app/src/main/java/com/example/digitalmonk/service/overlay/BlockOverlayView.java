@@ -56,14 +56,7 @@ public class BlockOverlayView {
             overlayView = createProgrammaticView(blockedAppName);
 
             // 2. Configure the WindowManager LayoutParams
-            int layoutFlag;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Android 8.0+ requires TYPE_APPLICATION_OVERLAY
-                layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
-            } else {
-                // Fallback for older devices (deprecated but necessary)
-                layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
-            }
+            int layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
 
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
