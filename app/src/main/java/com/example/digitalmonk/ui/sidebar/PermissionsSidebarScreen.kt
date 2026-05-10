@@ -71,6 +71,12 @@ fun PermissionsSidebar(
     var keepVpnAlive       by remember { mutableStateOf(prefs.isKeepVpnAlive) }
     var preventVpnOverride by remember { mutableStateOf(prefs.isPreventVpnOverride) }
 
+    val vpnSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        onRefresh()
+    }
+
     // Dialog visibility state
     var showPinDialog      by remember { mutableStateOf(false) }
     var showKeepAliveInfo  by remember { mutableStateOf(false) }
@@ -237,6 +243,19 @@ fun PermissionsSidebar(
 
             // ── Section: VPN Settings ─────────────────────────────────────
             SidebarSectionLabel("VPN SETTINGS")
+
+            // Always On VPN Card
+            PermissionCard(
+                emoji = "🔐",
+                title = "Always On VPN",
+                subtitle = "Tap to open VPN settings and enable Always On",
+                isGranted = false,  // ← always show as not granted (red),
+                // OR remove the isGranted parameter entirely
+                isCritical = true,
+                onAction = { vpnSettingsLauncher.launch(Intent(Settings.ACTION_VPN_SETTINGS)) }
+            )
+
+            SidebarDivider()
 
             ToggleCard(
                 emoji = "♻️",
