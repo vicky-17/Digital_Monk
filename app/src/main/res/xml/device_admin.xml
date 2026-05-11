@@ -13,4 +13,5 @@
         <!-- Allows setting screen lock timeout -->
         <expire-password />
     </uses-policies>
+    android:description="@string/device_admin_description"
 </device-admin>

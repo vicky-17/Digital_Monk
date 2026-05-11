@@ -1,210 +1,244 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-        xmlns:tools="http://schemas.android.com/tools">
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ── Network ───────────────────────────────────────────────────────── -->
+    <!-- ════════════════════════════════════════════════════════════════════
+         PERMISSIONS
+         ════════════════════════════════════════════════════════════════════ -->
+
+    <!-- ── 1. Network ────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- ── Boot (declared ONCE) ──────────────────────────────────────────── -->
+    <!-- ── 2. Boot ───────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- ── Foreground services ───────────────────────────────────────────── -->
+    <!-- ── 3. Foreground Services ────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- ── Notifications (Android 13+) ──────────────────────────────────── -->
+    <!-- ── 4. Notifications (Android 13+) ───────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ── Special access (granted via system settings) ─────────────────── -->
+    <!-- ── 5. Special Access (granted via system Settings) ──────────────── -->
     <uses-permission
-            android:name="android.permission.PACKAGE_USAGE_STATS"
-            tools:ignore="ProtectedPermissions" />
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission
-            android:name="android.permission.BIND_VPN_SERVICE"
-            tools:ignore="ProtectedPermissions" />
+        android:name="android.permission.BIND_VPN_SERVICE"
+        tools:ignore="ProtectedPermissions" />
 
-    <!-- ── Persistence / keep-alive ─────────────────────────────────────── -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- ── 6. Alarms & Wake ──────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- ── App inspection ───────────────────────────────────────────────── -->
+    <!-- ── 7. Battery / Persistence ─────────────────────────────────────── -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- ── 8. App Inspection ─────────────────────────────────────────────── -->
     <uses-permission
-            android:name="android.permission.QUERY_ALL_PACKAGES"
-            tools:ignore="QueryAllPackagesPermission" />
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         APPLICATION
+         ════════════════════════════════════════════════════════════════════ -->
 
     <application
-            android:name=".DigitalMonkApp"
-            android:allowBackup="false"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:supportsRtl="true"
-            android:theme="@style/Theme.DigitalMonk"
-            android:networkSecurityConfig="@xml/network_security_config">
+        android:name=".DigitalMonkApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DigitalMonk"
+        android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- ── Activities ─────────────────────────────────────────────── -->
 
+        <!-- ════════════════════════════════════════════════════════════════
+             ACTIVITIES
+             ════════════════════════════════════════════════════════════════ -->
+
+        <!-- ── Main Entry Point ──────────────────────────────────────────── -->
         <activity
-                android:name=".ui.MainActivity"
-                android:exported="true"
-                android:label="@string/app_name">
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Guardian escape activity — no UI chrome, instant launch -->
+        <!-- ── Onboarding / Setup ─────────────────────────────────────────── -->
+        <activity
+            android:name=".ui.onboarding.PermissionSetupActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.auth.PinSetupActivity"
+            android:exported="false" />
+
+        <!-- ── App Blocking UI ───────────────────────────────────────────── -->
+        <!--
+             GuardianRedirectActivity: no UI chrome, instant launch.
+             BlockedPageActivity: full-screen block page shown to child.
+             Both share block_task affinity so they form an isolated back stack.
+        -->
         <activity
             android:name=".service.accessibility.GuardianRedirectActivity"
             android:exported="false"
-            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-            android:taskAffinity="com.example.digitalmonk.block_task"
             android:excludeFromRecents="false"
+            android:launchMode="singleInstance"
             android:noHistory="true"
-            android:launchMode="singleInstance" />
+            android:taskAffinity="com.example.digitalmonk.block_task"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
         <activity
             android:name=".ui.block.BlockedPageActivity"
             android:exported="false"
-            android:theme="@style/Theme.DigitalMonk"
-            android:taskAffinity="com.example.digitalmonk.block_task"
-            android:launchMode="singleInstance"
             android:excludeFromRecents="false"
-            android:noHistory="true" />
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:taskAffinity="com.example.digitalmonk.block_task"
+            android:theme="@style/Theme.DigitalMonk" />
 
-        <activity
-                android:name=".ui.auth.PinSetupActivity"
-                android:exported="false" />
 
-        <activity
-                android:name=".ui.onboarding.PermissionSetupActivity"
-                android:exported="false" />
+        <!-- ════════════════════════════════════════════════════════════════
+             SERVICES
+             ════════════════════════════════════════════════════════════════ -->
 
-        <!-- ── Accessibility Service ──────────────────────────────────── -->
-
+        <!-- ── Accessibility Service ─────────────────────────────────────── -->
         <service
-                android:name=".service.accessibility.GuardianAccessibilityService"
-                android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-                android:exported="true">
+            android:name=".service.accessibility.GuardianAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
-                    android:name="android.accessibilityservice"
-                    android:resource="@xml/accessibility_config" />
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
         </service>
 
-        <!-- ── Watchdog Service ───────────────────────────────────────── -->
+        <!-- ── Watchdog Service (foreground, survives recents swipe) ─────── -->
         <!--
-            stopWithTask="false": service keeps running even after the user
-            swipes the app from recents.
+             stopWithTask="false": keeps running after user swipes app from recents.
         -->
         <service
-                android:name=".service.WatchdogService"
-                android:foregroundServiceType="specialUse"
-                android:exported="false"
-                android:stopWithTask="false">
+            android:name=".service.WatchdogService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
             <property
-                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                    android:value="parental_control_guardian" />
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="parental_control_guardian" />
         </service>
 
-        <!-- ── Watchdog Job Service (JobScheduler backup) ────────────── -->
+        <!-- ── Watchdog Job Service (JobScheduler backup) ────────────────── -->
         <!--
-            exported="true" + BIND_JOB_SERVICE: required so the system
-            scheduler can bind to it. The permission ensures only the OS can.
+             exported="true" + BIND_JOB_SERVICE: required so the OS scheduler
+             can bind to it. The permission ensures only the system can call it.
         -->
         <service
-                android:name=".service.WatchdogJobService"
-                android:permission="android.permission.BIND_JOB_SERVICE"
-                android:exported="true" />
+            android:name=".service.WatchdogJobService"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- ── VPN Service ────────────────────────────────────────────── -->
-
+        <!-- ── VPN Service (DNS-based content filter) ────────────────────── -->
         <service
-                android:name=".service.vpn.DnsVpnService"
-                android:permission="android.permission.BIND_VPN_SERVICE"
-                android:foregroundServiceType="specialUse"
-                android:exported="false">
+            android:name=".service.vpn.DnsVpnService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
+            <meta-data
+                android:name="android.net.VpnService"
+                android:value="@string/vpn_service_description" />
             <property
-                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                    android:value="dns_filter_for_parental_control" />
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="dns_filter_for_parental_control" />
         </service>
 
-        <!-- ── VPN Monitor Service (Layer 3 keep-alive companion) ─────── -->
+        <!-- ── VPN Monitor Service (Layer-3 keep-alive companion) ────────── -->
         <!--
-            Bound service — runs alongside DnsVpnService.
-            When OEM kills the VPN process, this service's onDestroy() fires,
-            reads the last heartbeat, and restarts DnsVpnService if it was
-            killed unexpectedly (not stopped cleanly by the user).
-            exported="false": only our own app can bind to it.
+             Bound service that runs alongside DnsVpnService.
+             When the OEM kills the VPN process, onDestroy() fires here,
+             reads the last heartbeat, and restarts DnsVpnService if it was
+             killed unexpectedly (not stopped cleanly by the user).
         -->
         <service
-                android:name=".service.vpn.VpnMonitorService"
-                android:exported="false" />
+            android:name=".service.vpn.VpnMonitorService"
+            android:exported="false" />
 
-        <!-- ── Overlay Service ────────────────────────────────────────── -->
-
+        <!-- ── Overlay Services ──────────────────────────────────────────── -->
+        <!--
+             OverlayService       : general-purpose parental control overlay.
+             GuardianOverlayService: accessibility health-check guide bubble.
+             SettingsBlockOverlayService: blocks Settings pages to prevent
+                                          uninstall / device-admin removal.
+        -->
         <service
-                android:name=".service.overlay.OverlayService"
-                android:foregroundServiceType="specialUse"
-                android:exported="false">
+            android:name=".service.overlay.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
             <property
-                    android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                    android:value="overlay_for_parental_control" />
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="overlay_for_parental_control" />
         </service>
 
         <service
             android:name=".service.overlay.GuardianOverlayService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="accessibility_guardian_overlay" />
         </service>
 
-        <!-- ── Settings Block Overlay (anti-uninstall page blocker) ──────────── -->
         <service
             android:name=".service.overlay.SettingsBlockOverlayService"
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="settings_page_block_overlay" />
         </service>
 
-        <!-- ── Device Admin (anti-uninstall) ─────────────────────────── -->
 
+        <!-- ════════════════════════════════════════════════════════════════
+             RECEIVERS
+             ════════════════════════════════════════════════════════════════ -->
+
+        <!-- ── Device Admin (anti-uninstall protection) ──────────────────── -->
         <receiver
-                android:name=".receiver.MonkDeviceAdminReceiver"
-                android:exported="true"
-                android:permission="android.permission.BIND_DEVICE_ADMIN">
+            android:name=".receiver.MonkDeviceAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data
-                    android:name="android.app.device_admin"
-                    android:resource="@xml/device_admin" />
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
 
-        <!-- ── Boot Receiver ─────────────────────────────────────────── -->
+        <!-- ── Boot Receiver ─────────────────────────────────────────────── -->
         <!--
-            directBootAware="true": fires even before the user unlocks after reboot.
-            priority="1000": fires before other apps' boot receivers.
+             directBootAware="true": fires before the user unlocks after reboot.
+             priority="1000"       : fires before other apps' boot receivers.
+             Handles both standard and OEM-specific (HTC/Xiaomi) boot actions.
         -->
         <receiver
-                android:name=".receiver.BootReceiver"
-                android:enabled="true"
-                android:exported="true"
-                android:directBootAware="true">
+            android:name=".receiver.BootReceiver"
+            android:directBootAware="true"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
@@ -213,11 +247,24 @@
             </intent-filter>
         </receiver>
 
-        <!-- ── Package Change Receiver ───────────────────────────────── -->
-
+        <!-- ── Alarm Restart Receiver ────────────────────────────────────── -->
+        <!--
+             AlarmManager-based service resurrection backup.
+             directBootAware="true": can fire before first unlock post-reboot.
+        -->
         <receiver
-                android:name=".receiver.PackageChangeReceiver"
-                android:exported="true">
+            android:name=".receiver.AlarmRestartReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.digitalmonk.ALARM_RESTART" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ── Package Change Receiver ───────────────────────────────────── -->
+        <receiver
+            android:name=".receiver.PackageChangeReceiver"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.PACKAGE_ADDED" />
                 <action android:name="android.intent.action.PACKAGE_REMOVED" />
@@ -225,31 +272,21 @@
             </intent-filter>
         </receiver>
 
-        <!-- ── App Update Receiver ───────────────────────────────────── -->
+        <!-- ── App Update Receiver ───────────────────────────────────────── -->
         <!--
-            Fires after our own APK is updated (Play Store or ADB install).
-            All running services are killed on update — this receiver restarts
-            DnsVpnService and re-schedules the WorkManager watchdog if the
-            VPN filter was active before the update.
-            exported="false": MY_PACKAGE_REPLACED is only sent to our own app,
-            no data scheme needed.
+             Fires after our own APK is updated (Play Store or ADB install).
+             All running services are killed on update — this receiver restarts
+             DnsVpnService and re-schedules the watchdog if VPN filter was active.
+             exported="false": MY_PACKAGE_REPLACED is only sent to our own app.
         -->
         <receiver
-                android:name=".receiver.AppUpdateReceiver"
-                android:exported="false">
+            android:name=".receiver.AppUpdateReceiver"
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name=".receiver.AlarmRestartReceiver"
-            android:exported="false"
-            android:directBootAware="true">
-            <intent-filter>
-                <action android:name="com.example.digitalmonk.ALARM_RESTART" />
-            </intent-filter>
-        </receiver>
 
     </application>
 

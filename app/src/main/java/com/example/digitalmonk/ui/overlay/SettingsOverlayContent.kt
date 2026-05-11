@@ -32,8 +32,8 @@ fun SettingsBlockOverlay(
 
     val targetHeight: Dp = when (stage) {
         SettingsOverlayStage.HIDE -> 0.dp
-        SettingsOverlayStage.STRIP -> 70.dp
-        SettingsOverlayStage.HALF  -> screenHeight * 0.8f
+        SettingsOverlayStage.STRIP -> 10.dp
+        SettingsOverlayStage.HALF  -> 70.dp //screenHeight * 0.8f
         SettingsOverlayStage.FULL  -> screenHeight
     }
 
@@ -41,7 +41,7 @@ fun SettingsBlockOverlay(
         modifier = Modifier
             .background(Color.Red)
             .animateContentSize(
-                animationSpec = tween(durationMillis = 4000), // <-- INCREASE THIS
+                animationSpec = tween(durationMillis = 7000), // <-- INCREASE THIS
                 alignment = Alignment.BottomCenter
             )
             .height(targetHeight)

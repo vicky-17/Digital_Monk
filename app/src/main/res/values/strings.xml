@@ -2,6 +2,8 @@
 <resources>
     <string name="app_name">Digital Monk</string>
     <string name="accessibility_service_description">Digital Monk monitors the screen to block short-form video content like YouTube Shorts, Instagram Reels, and TikTok.</string>
+    <string name="vpn_service_description">Digital Monk uses VPN to use DNS filter.</string>
+    <string name="device_admin_description">Digital Monk uses Device Admin Permission for Uninstaller Protection.</string>
 
     <!-- ── SettingsBlockOverlayService strings ──────────────────────────── -->
     <string name="overlay_protected_label">🛡️  Protected by Digital Monk</string>

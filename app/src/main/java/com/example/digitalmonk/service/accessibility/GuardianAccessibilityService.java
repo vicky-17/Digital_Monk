@@ -4,6 +4,10 @@ import android.accessibilityservice.AccessibilityService;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.List;
 
 import com.example.digitalmonk.core.utils.UiDumper;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
@@ -118,20 +122,34 @@ public class GuardianAccessibilityService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // Always update the heartbeat so health checks know the service is alive
         lastEventTimestamp = System.currentTimeMillis();
 
         if (event == null) return;
 
-        int          eventType = event.getEventType();
-        CharSequence pkgSeq    = event.getPackageName();
+        int eventType = event.getEventType();
+        CharSequence pkgSeq = event.getPackageName();
 
-        // Track which app is in the foreground
+        // Track foreground package
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSeq != null) {
             lastForegroundPackage = pkgSeq.toString();
         }
 
-        // We only care about these two event types — ignore everything else
+        // ── PRIORITY 1: Uninstaller guard — runs first ─────────
+        // No package filter, no early returns.
+        // Only skip our own app to avoid loops.
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                // Log the hierarchy for debugging
+//                logViewHierarchy(root, 0);
+
+                // Run the detection and blocking logic
+                if (findAndPerformBack(root)) return; // dangerous screen → BACK, skip everything
+            }
+        }
+        // ── END PRIORITY 1 ────────────────────────────────────────────────────
+
+        // Everything below is secondary — filter events we don't need
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                 && eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             return;
@@ -139,21 +157,106 @@ public class GuardianAccessibilityService extends AccessibilityService {
 
         if (pkgSeq == null) return;
         String pkg = pkgSeq.toString();
-
-        // Never process events from our own app
         if (pkg.equals(getApplicationContext().getPackageName())) return;
 
-        // Fetch the root node once and share it between all handlers
+        // Re-use root (fetch again — previous root may have been from a different window)
         AccessibilityNodeInfo root = getRootInActiveWindow();
 
-        // ── DEBUG: log full UI tree on window change ──────────────────────────
+        // ── DEBUG ─────────────────────────────────────────────────────────────
         if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             UiDumper.dumpAll(root, pkg);
         }
-        // ── END DEBUG ─────────────────────────────────────────────────────────
 
-        // Delegate to feature handlers
+        // ── Normal handlers ───────────────────────────────────────────────────
         shortsBlockHandler.handle(root, pkg);
         appBlockHandler.handle(root, pkg, eventType, getApplicationContext());
     }
+
+
+    // ── Uninstaller / Device-Admin Back Guard (ASLeech pattern) ──────────
+
+    /**
+     * Recursively walks the accessibility tree.
+     * If any node's text matches a known dangerous label, fires GLOBAL_ACTION_BACK
+     * immediately and stops traversal.
+
+     * Target texts:
+     *   "Digital Monk"          — our app name on App Info / Device Admin page
+     *   "Erase all data (factory reset)" — Device Admin deactivation confirm page
+     *   "Uninstall"             — stock Android App Info uninstall button
+     *   "Force stop"            — App Info page (confirms we are on the right screen)
+     *   "Deactivate this device admin app" — Device Admin deactivation button text
+     */
+    private static final Set<String> BACK_TRIGGER_TEXTS = new HashSet<>(Arrays.asList(
+            "Erase all data (factory reset)",
+            "Deactivate this device admin app",
+            "Uninstall",
+            "Force stop"
+    ));
+
+    private boolean findAndPerformBack(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+
+        // Gate 1 — page must be about our app
+        if (!hasText(root, "Digital Monk"))
+            return false;
+
+        // Gate 2 — dangerous action must be present
+        boolean dangerous =
+                hasText(root, "Uninstall")
+                        || hasText(root, "Force stop")
+                        || hasText(root, "Erase all data (factory reset)")
+                        || hasText(root, "Deactivate this device admin app")
+                        || hasText(root, "Use Digital Monk")
+                        || hasText(root, "Battery details")
+                        || hasText(root, "VPN")
+                ;
+
+
+        if (dangerous) {
+            Log.w(TAG, "🔒 Dangerous page for Digital Monk → firing BACK");
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean hasText(AccessibilityNodeInfo root, String text) {
+        try {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
+            return nodes != null && !nodes.isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+
+
+    /**
+     * logs the view hierarchy to Logcat.
+     * Used to understand the UI structure of different windows.
+     */
+    private void logViewHierarchy(AccessibilityNodeInfo nodeInfo, int depth) {
+        if (nodeInfo == null) return;
+
+        // Create indentation based on depth
+        StringBuilder prefix = new StringBuilder();
+        for (int i = 0; i < depth; i++) {
+            prefix.append("  ");
+        }
+
+        // Print the node information
+        Log.d(TAG, prefix.toString() + nodeInfo.toString());
+
+        // Iterate through children
+        for (int i = 0; i < nodeInfo.getChildCount(); i++) {
+            AccessibilityNodeInfo child = nodeInfo.getChild(i);
+            if (child != null) {
+                logViewHierarchy(child, depth + 1);
+            }
+        }
+    }
+
+
 }
