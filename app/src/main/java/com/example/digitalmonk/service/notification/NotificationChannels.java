@@ -3,7 +3,6 @@ package com.example.digitalmonk.service.notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
-import android.os.Build;
 
 import com.example.digitalmonk.core.utils.Constants;
 
@@ -16,7 +15,7 @@ import java.util.List;
  * For a parental control application, categorizing these notifications is essential
  * so the system (and the parent) knows which alerts are silent background trackers
  * (like the VPN) and which are urgent (like bypass attempts).
- *
+
  * This utility class creates those channels when the application first starts.
  */
 public class NotificationChannels {

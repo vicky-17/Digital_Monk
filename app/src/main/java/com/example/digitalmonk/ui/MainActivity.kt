@@ -415,7 +415,7 @@ class MainActivity : BaseActivity() {
                         "Visited — make sure Digital Monk is toggled ON"
                     else
                         "Required on ${Build.MANUFACTURER} — prevents app from being killed",
-                    isActive = permissionsState.visitedAutostart,
+                    isActive = false,
                     onClick = {
                         prefs2.edit().putBoolean("visited_autostart", true).apply()
                         onRefresh()

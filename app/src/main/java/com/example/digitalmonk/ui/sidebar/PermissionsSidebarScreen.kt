@@ -190,7 +190,7 @@ fun PermissionsSidebar(
                         emoji = "🪟",
                         title = "Background Pop-up (MIUI)",
                         subtitle = "Allow overlay to appear over blocked apps",
-                        isGranted = permissionsState.visitedMiuiBgPopup,
+                        isGranted = false,
                         isCritical = true,
                         onAction = {
                             context.getSharedPreferences("monk_prefs", android.content.Context.MODE_PRIVATE)
