@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import com.example.digitalmonk.core.base.BaseActivity
 import com.example.digitalmonk.data.local.prefs.PrefsManager
+import com.example.digitalmonk.ui.MainActivity
 import com.example.digitalmonk.ui.onboarding.PermissionSetupActivity
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
 
@@ -30,7 +31,7 @@ class PinSetupActivity : BaseActivity() {
                         // Note: Depending on your flow, you might do this here or inside PermissionSetupActivity
                         // prefs.setSetupComplete(true)
 
-                        startActivity(Intent(this, PermissionSetupActivity::class.java))
+                        startActivity(Intent(this, MainActivity::class.java))
                         finish()
                     }
                 )

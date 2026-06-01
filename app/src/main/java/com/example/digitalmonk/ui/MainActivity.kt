@@ -72,6 +72,14 @@ import com.example.digitalmonk.ui.theme.DigitalMonkTheme
 import kotlinx.coroutines.delay
 import com.example.digitalmonk.ui.sidebar.PermissionsSidebar
 
+import android.os.SystemClock
+import com.example.digitalmonk.core.utils.NtpFetcher
+
+
+
+
+
+
 
 
 
@@ -522,7 +530,11 @@ class MainActivity : BaseActivity() {
             ActionCard(
                 title = if (isLocked) "🔒 Settings Locked" else "Lock Settings",
                 description = if (isLocked) {
-                    val remaining = PrefsManager(context).lockUntil - System.currentTimeMillis()
+                    val p = PrefsManager(context)
+                    val anchorElapsed = p.lockAnchorElapsed
+                    val durationMs = p.lockDurationMs
+                    val elapsedSoFar = SystemClock.elapsedRealtime() - anchorElapsed
+                    val remaining = (durationMs - elapsedSoFar).coerceAtLeast(0L)
                     "Unlocks in ${formatRemainingTime(remaining)}"
                 } else {
                     "Prevent disabling protections for a set period"
@@ -534,10 +546,29 @@ class MainActivity : BaseActivity() {
             if (showLockDialog) {
                 LockSettingsDialog(
                     onConfirm = { durationMs ->
-                        val until = System.currentTimeMillis() + durationMs
-                        PrefsManager(context).setLockUntil(until)
+                        val prefs = PrefsManager(context)
+                        val now = System.currentTimeMillis()
+
+                        // Save tamper-proof anchors immediately (no NTP needed yet)
+                        prefs.lockDurationMs = durationMs
+                        prefs.lockAnchorElapsed = SystemClock.elapsedRealtime()
+                        prefs.lockUntil = now + durationMs          // fallback epoch
+                        prefs.lastKnownDeviceTime = now
+                        prefs.lockNtpOffset = Long.MIN_VALUE         // sentinel = not fetched yet
+
                         showLockDialog = false
                         onRefresh()
+
+                        // Fetch NTP offset in background, update prefs when done
+                        Thread {
+                            val ntpTime = NtpFetcher.fetchNtpTime()
+                            if (ntpTime > 0) {
+                                val offset = ntpTime - System.currentTimeMillis()
+                                prefs.lockNtpOffset = offset
+                                // Recalculate NTP-based unlock epoch
+                                prefs.lockUntil = ntpTime + durationMs
+                            }
+                        }.start()
                     },
                     onDismiss = { showLockDialog = false }
                 )

@@ -29,6 +29,7 @@ import com.example.digitalmonk.service.monitor.SettingsPageReader;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
 import com.example.digitalmonk.ui.MainActivity;
+import com.example.digitalmonk.core.utils.NtpFetcher;
 
 /**
  * WatchdogService — Updated for UsageStats-driven settings detection
@@ -241,6 +242,23 @@ public class WatchdogService extends Service {
                 Log.e(TAG, "VPN restart failed", e);
             }
         }
+
+        // Refresh NTP offset every ~30min if lock is active
+
+        PrefsManager p = new PrefsManager(this);  // prefs field already exists, use that
+        // Refresh NTP offset periodically while lock is active
+        if (prefs.getLockDurationMs() > 0) {
+            long lastKnown = prefs.getLastKnownDeviceTime();
+            long now = System.currentTimeMillis();
+            if (now - lastKnown > 20 * 60 * 1000L) {
+                long ntpTime = NtpFetcher.fetchNtpTime();
+                if (ntpTime > 0) {
+                    prefs.setLockNtpOffset(ntpTime - now);
+                }
+                prefs.setLastKnownDeviceTime(now);
+            }
+        }
+
     }
 
     // ── Settings Detection Loop (300ms) ───────────────────────────────────────

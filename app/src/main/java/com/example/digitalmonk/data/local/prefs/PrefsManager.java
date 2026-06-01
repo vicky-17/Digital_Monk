@@ -2,6 +2,7 @@ package com.example.digitalmonk.data.local.prefs;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 
 import com.example.digitalmonk.core.utils.Constants;
 
@@ -44,6 +45,16 @@ public class PrefsManager {
     private static final String KEY_PREMIUM_EXPIRY = "premium_expiry";
 
     private static final String KEY_LOCK_UNTIL_TIMESTAMP = "lock_until_timestamp";
+
+
+
+    private static final String KEY_LOCK_DURATION_MS       = "lock_duration_ms";
+    private static final String KEY_LOCK_ANCHOR_ELAPSED    = "lock_anchor_elapsed";
+    private static final String KEY_LOCK_NTP_OFFSET        = "lock_ntp_offset";
+    private static final String KEY_LAST_KNOWN_DEVICE_TIME = "last_known_device_time";
+
+
+
 
     public PrefsManager(Context context) {
         this.prefs = context.getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE);
@@ -243,13 +254,92 @@ public class PrefsManager {
         return prefs.getLong(KEY_LOCK_UNTIL_TIMESTAMP, 0L);
     }
 
+
+
+
+
+
+
+
+    // ── Lock Anchors ──────────────────────────────────────────────────────────────
+
+    public void setLockDurationMs(long value) {
+        prefs.edit().putLong(KEY_LOCK_DURATION_MS, value).apply();
+    }
+
+    public long getLockDurationMs() {
+        return prefs.getLong(KEY_LOCK_DURATION_MS, 0L);
+    }
+
+    public void setLockAnchorElapsed(long value) {
+        prefs.edit().putLong(KEY_LOCK_ANCHOR_ELAPSED, value).apply();
+    }
+
+    public long getLockAnchorElapsed() {
+        return prefs.getLong(KEY_LOCK_ANCHOR_ELAPSED, 0L);
+    }
+
+    public void setLockNtpOffset(long value) {
+        prefs.edit().putLong(KEY_LOCK_NTP_OFFSET, value).apply();
+    }
+
+    public long getLockNtpOffset() {
+        return prefs.getLong(KEY_LOCK_NTP_OFFSET, Long.MIN_VALUE);
+    }
+
+    public void setLastKnownDeviceTime(long value) {
+        prefs.edit().putLong(KEY_LAST_KNOWN_DEVICE_TIME, value).apply();
+    }
+
+    public long getLastKnownDeviceTime() {
+        return prefs.getLong(KEY_LAST_KNOWN_DEVICE_TIME, 0L);
+    }
+
     public boolean isSettingsLocked() {
-        return System.currentTimeMillis() < getLockUntil();
+        long now = System.currentTimeMillis();
+        long duration = getLockDurationMs();
+        if (duration <= 0) return false;
+
+        // Method A: ElapsedRealtime (tamper-proof within boot)
+        long anchorElapsed = getLockAnchorElapsed();
+        if (anchorElapsed > 0) {
+            long elapsed = SystemClock.elapsedRealtime() - anchorElapsed;
+            if (elapsed < duration) return true;
+        }
+
+        // Method B: NTP-adjusted time
+        long ntpOffset = getLockNtpOffset();
+        if (ntpOffset != Long.MIN_VALUE) {
+            long ntpNow = now + ntpOffset;
+            long ntpUnlockAt = getLockUntil(); // reuse existing key as NTP-based unlock epoch
+            if (ntpNow < ntpUnlockAt) return true;
+        }
+
+        // Method C: Tamper detection — clock jumped backward
+        long lastKnown = getLastKnownDeviceTime();
+        if (lastKnown > 0 && now < lastKnown - 60_000L) {
+            // Clock went back more than 1 min → extend lock by saving new anchor
+            setLockAnchorElapsed(SystemClock.elapsedRealtime());
+            setLastKnownDeviceTime(now);
+            return true;
+        }
+
+        // Update last known time on every check
+        if (lastKnown > 0) setLastKnownDeviceTime(now);
+
+        return false;
     }
 
 
-
-
+    public void clearLock() {
+        prefs.edit()
+                .remove(KEY_LOCK_UNTIL_TIMESTAMP)
+                .remove(KEY_LOCK_DURATION_MS)
+                .remove(KEY_LOCK_ANCHOR_ELAPSED)
+                .remove(KEY_LOCK_NTP_OFFSET)
+                .remove(KEY_LAST_KNOWN_DEVICE_TIME)
+                .apply();
+    }
 
 
 

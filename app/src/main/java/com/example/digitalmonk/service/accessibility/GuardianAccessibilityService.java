@@ -44,7 +44,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
      * Filter logcat by tag MONK_UI_DUMP to see the output.
      * Remember to set back to false before release.
      */
-    public static volatile boolean DEBUG_DUMP_UI = true;
+    public static volatile boolean DEBUG_DUMP_UI = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Internal State
@@ -141,7 +141,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root != null) {
                 // Log the hierarchy for debugging
-//                logViewHierarchy(root, 0);
+                logViewHierarchy(root, 0);
 
                 // Run the detection and blocking logic
                 if (findAndPerformBack(root)) return; // dangerous screen → BACK, skip everything
