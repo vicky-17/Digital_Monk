@@ -96,6 +96,7 @@ public class DnsVpnService extends VpnService {
         filterEngine = new DnsFilterEngine(prefs);
     }
 
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {

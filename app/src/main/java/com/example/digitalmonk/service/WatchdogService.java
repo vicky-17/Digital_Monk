@@ -82,7 +82,7 @@ public class WatchdogService extends Service {
             context.startForegroundService(intent);
             context.startService(intent);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to start WatchdogService", e);
+//            Log.e(TAG, "Failed to start WatchdogService", e);
         }
     }
 
@@ -144,7 +144,7 @@ public class WatchdogService extends Service {
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
 
                     if (!settingsMonitor.isSettingsOpen()) {
-                        Log.d("MONK_DEBUG", "Watchdog: Confirmed settings closed. Triggering HIDE.");
+//                        Log.d("MONK_DEBUG", "Watchdog: Confirmed settings closed. Triggering HIDE.");
                         if (!SettingsBlockOverlayService.isFullOverlay) {
                             SettingsBlockOverlayService.hide(WatchdogService.this);
                         }
@@ -152,7 +152,7 @@ public class WatchdogService extends Service {
                             settingsPageReader.reset();
                         }
                     } else {
-                        Log.d("MONK_DEBUG", "Watchdog: Ignored false closed event - still in settings.");
+//                        Log.d("MONK_DEBUG", "Watchdog: Ignored false closed event - still in settings.");
                     }
                 }, 500); // 500ms delay to account for page transition "flicker"
             }
@@ -161,12 +161,12 @@ public class WatchdogService extends Service {
 
         settingsPageReader = new SettingsPageReader();
 
-        Log.i(TAG, "WatchdogService created");
+//        Log.i(TAG, "WatchdogService created");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.i(TAG, "Watchdog started");
+//        Log.i(TAG, "Watchdog started");
 
         Notification notification = buildNotification();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -190,7 +190,7 @@ public class WatchdogService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.w(TAG, "Task removed — scheduling restart");
+//        Log.w(TAG, "Task removed — scheduling restart");
         Intent restartIntent = new Intent(getApplicationContext(), WatchdogService.class);
         PendingIntent pi = PendingIntent.getService(
                 getApplicationContext(), 1, restartIntent,
@@ -211,7 +211,7 @@ public class WatchdogService extends Service {
         if (settingsHandler != null) settingsHandler.removeCallbacksAndMessages(null);
         if (healthCheckThread != null) healthCheckThread.quitSafely();
         if (settingsPollThread != null) settingsPollThread.quitSafely();
-        Log.w(TAG, "WatchdogService destroyed");
+//        Log.w(TAG, "WatchdogService destroyed");
     }
 
     // ── Health Check Loop (30s) ───────────────────────────────────────────────
@@ -230,16 +230,16 @@ public class WatchdogService extends Service {
     }
 
     private void performHealthCheck() {
-        Log.d(TAG, "🔍 Health check…");
+//        Log.d(TAG, "🔍 Health check…");
 
         // VPN watchdog
         if (prefs.isSafeSearchEnabled() && !DnsVpnService.isServiceRunning) {
-            Log.w(TAG, "⚠️ DnsVpnService dead — restarting");
+//            Log.w(TAG, "⚠️ DnsVpnService dead — restarting");
             try {
                 Intent i = new Intent(this, DnsVpnService.class);
                 startForegroundService(i);
             } catch (Exception e) {
-                Log.e(TAG, "VPN restart failed", e);
+//                Log.e(TAG, "VPN restart failed", e);
             }
         }
 
@@ -282,9 +282,9 @@ public class WatchdogService extends Service {
 
         if (settingsMonitor.isSettingsOpen()) {
             String pkg = settingsMonitor.getCurrentSettingsPackage();
-            Log.d("MONK_TRACE", "performSettingsPoll() → settings IS open, pkg=" + pkg + " → calling readAndRespond");
+//            Log.d("MONK_TRACE", "performSettingsPoll() → settings IS open, pkg=" + pkg + " → calling readAndRespond");
             boolean isDangerous = settingsPageReader.readAndRespond(this, pkg);
-            Log.d("MONK_TRACE", "performSettingsPoll() → readAndRespond result: isDangerous=" + isDangerous);
+//            Log.d("MONK_TRACE", "performSettingsPoll() → readAndRespond result: isDangerous=" + isDangerous);
 
             if (!isDangerous && !SettingsBlockOverlayService.isFullOverlay
                     && SettingsBlockOverlayService.isRunning) {

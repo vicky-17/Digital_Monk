@@ -82,24 +82,24 @@ public class SettingsAppMonitor {
         String foreground = getForegroundPackage();
         boolean isSettingsNow = foreground != null && SETTINGS_PACKAGES.contains(foreground);
 
-        Log.d("MONK_TRACE", "poll() → foreground=" + foreground + " | isSettingsNow=" + isSettingsNow + " | settingsCurrentlyOpen=" + settingsCurrentlyOpen);
+//        Log.d("MONK_TRACE", "poll() → foreground=" + foreground + " | isSettingsNow=" + isSettingsNow + " | settingsCurrentlyOpen=" + settingsCurrentlyOpen);
 
         if (isSettingsNow && !settingsCurrentlyOpen) {
             notSettingsCount = 0;
             settingsCurrentlyOpen = true;
             currentSettingsPackage = foreground;
             if (listener != null) listener.onSettingsOpened(foreground);
-            Log.d("MONK_DEBUG", "Settings opened: " + foreground);
+//            Log.d("MONK_DEBUG", "Settings opened: " + foreground);
 
         } else if (!isSettingsNow && settingsCurrentlyOpen) {
             // null means no ACTIVITY_RESUMED found — ambiguous, treat cautiously
             if (foreground == null) {
                 // Don't increment — this is a gap in events, not a confirmed switch
-                Log.d("MONK_DEBUG", "Foreground null — holding settings open state");
+//                Log.d("MONK_DEBUG", "Foreground null — holding settings open state");
                 return;
             }
             notSettingsCount++;
-            Log.d("MONK_DEBUG", "Not-settings count: " + notSettingsCount + " last pkg: " + foreground);
+//            Log.d("MONK_DEBUG", "Not-settings count: " + notSettingsCount + " last pkg: " + foreground);
 
             if (notSettingsCount >= CLOSE_CONFIRM_THRESHOLD) {
                 notSettingsCount = 0;
@@ -108,7 +108,7 @@ public class SettingsAppMonitor {
                 if (listener != null) listener.onSettingsClosed();
             }
         } else {
-            Log.d("MONK_DEBUG", "Not-settings count: " + notSettingsCount);
+//            Log.d("MONK_DEBUG", "Not-settings count: " + notSettingsCount);
             notSettingsCount = 0; // reset if settings is open again
         }
     }
@@ -153,9 +153,9 @@ public class SettingsAppMonitor {
 
             while (events.hasNextEvent()) {
                 events.getNextEvent(event);
-                Log.d("MONK_DEBUG", "Event: type=" + event.getEventType()
-                        + " pkg=" + event.getPackageName()
-                        + " time=" + event.getTimeStamp());
+//                Log.d("MONK_DEBUG", "Event: type=" + event.getEventType()
+//                        + " pkg=" + event.getPackageName()
+//                        + " time=" + event.getTimeStamp());
 
                 if (event.getEventType() == UsageEvents.Event.ACTIVITY_RESUMED
                         && event.getTimeStamp() >= lastTime) {
@@ -166,14 +166,14 @@ public class SettingsAppMonitor {
                     }
                 }
             }
-            Log.d("MONK_DEBUG", "getForegroundPackage() returning: " + lastPkg);
+//            Log.d("MONK_DEBUG", "getForegroundPackage() returning: " + lastPkg);
 
-            Log.d("MONK_TRACE", "getForegroundPackage() → returning: " + lastPkg + " | lastTime=" + lastTime);
+//            Log.d("MONK_TRACE", "getForegroundPackage() → returning: " + lastPkg + " | lastTime=" + lastTime);
 
             return lastPkg;
 
         } catch (Exception e) {
-            Log.w(TAG, "UsageEvents query failed: " + e.getMessage());
+//            Log.w(TAG, "UsageEvents query failed: " + e.getMessage());
             return null;
         }
     }

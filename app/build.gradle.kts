@@ -47,6 +47,7 @@ android {
 dependencies {
 
     implementation(libs.androidx.compose.animation)
+    implementation(libs.androidx.compose.foundation)
     // ── Core ────────────────────────────────────────────────────────────────
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -76,12 +77,31 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.savedstate)
 
+
+    // Standard material design icons
+    implementation("androidx.compose.material:material-icons-core")
+    // If you want extended icons like special security locks, charts, etc.
+    implementation("androidx.compose.material:material-icons-extended")
+
+    // Standard Kotlin Coroutines Core (Provides MutableStateFlow and StateFlow)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+
+    // Compose Lifecycle Extensions (Provides collectAsStateWithLifecycle)
+    // This is highly recommended over standard collectAsState() for ViewModels!
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.1")
+
+    // Jetpack Compose ViewModel integration (If not already present)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.1")
+
     // ── Testing ──────────────────────────────────────────────────────────────
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+
 }
 
 tasks.withType<JavaCompile> {

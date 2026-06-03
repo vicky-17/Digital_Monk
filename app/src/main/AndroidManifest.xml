@@ -2,50 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ════════════════════════════════════════════════════════════════════
-         PERMISSIONS
-         ════════════════════════════════════════════════════════════════════ -->
-
-    <!-- ── 1. Network ────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- ── 2. Boot ───────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- ── 3. Foreground Services ────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-
-    <!-- ── 4. Notifications (Android 13+) ───────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- ── 5. Special Access (granted via system Settings) ──────────────── -->
-    <uses-permission
-        android:name="android.permission.PACKAGE_USAGE_STATS"
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission
-        android:name="android.permission.BIND_VPN_SERVICE"
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE"
         tools:ignore="ProtectedPermissions" />
-
-    <!-- ── 6. Alarms & Wake ──────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-
-    <!-- ── 7. Battery / Persistence ─────────────────────────────────────── -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- ── 8. App Inspection ─────────────────────────────────────────────── -->
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
-
-
-    <!-- ════════════════════════════════════════════════════════════════════
-         APPLICATION
-         ════════════════════════════════════════════════════════════════════ -->
 
     <application
         android:name=".DigitalMonkApp"
@@ -58,11 +31,6 @@
         android:networkSecurityConfig="@xml/network_security_config">
 
 
-        <!-- ════════════════════════════════════════════════════════════════
-             ACTIVITIES
-             ════════════════════════════════════════════════════════════════ -->
-
-        <!-- ── Main Entry Point ──────────────────────────────────────────── -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -73,7 +41,6 @@
             </intent-filter>
         </activity>
 
-        <!-- ── Onboarding / Setup ─────────────────────────────────────────── -->
         <activity
             android:name=".ui.onboarding.PermissionSetupActivity"
             android:exported="false" />
@@ -82,7 +49,6 @@
             android:name=".ui.auth.PinSetupActivity"
             android:exported="false" />
 
-        <!-- ── App Blocking UI ───────────────────────────────────────────── -->
         <!--
              GuardianRedirectActivity: no UI chrome, instant launch.
              BlockedPageActivity: full-screen block page shown to child.
@@ -125,9 +91,6 @@
         </service>
 
         <!-- ── Watchdog Service (foreground, survives recents swipe) ─────── -->
-        <!--
-             stopWithTask="false": keeps running after user swipes app from recents.
-        -->
         <service
             android:name=".service.WatchdogService"
             android:exported="false"
@@ -139,10 +102,6 @@
         </service>
 
         <!-- ── Watchdog Job Service (JobScheduler backup) ────────────────── -->
-        <!--
-             exported="true" + BIND_JOB_SERVICE: required so the OS scheduler
-             can bind to it. The permission ensures only the system can call it.
-        -->
         <service
             android:name=".service.WatchdogJobService"
             android:exported="true"
@@ -166,23 +125,11 @@
         </service>
 
         <!-- ── VPN Monitor Service (Layer-3 keep-alive companion) ────────── -->
-        <!--
-             Bound service that runs alongside DnsVpnService.
-             When the OEM kills the VPN process, onDestroy() fires here,
-             reads the last heartbeat, and restarts DnsVpnService if it was
-             killed unexpectedly (not stopped cleanly by the user).
-        -->
         <service
             android:name=".service.vpn.VpnMonitorService"
             android:exported="false" />
 
         <!-- ── Overlay Services ──────────────────────────────────────────── -->
-        <!--
-             OverlayService       : general-purpose parental control overlay.
-             GuardianOverlayService: accessibility health-check guide bubble.
-             SettingsBlockOverlayService: blocks Settings pages to prevent
-                                          uninstall / device-admin removal.
-        -->
         <service
             android:name=".service.overlay.OverlayService"
             android:exported="false"
@@ -192,14 +139,6 @@
                 android:value="overlay_for_parental_control" />
         </service>
 
-        <service
-            android:name=".service.overlay.GuardianOverlayService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="accessibility_guardian_overlay" />
-        </service>
 
         <service
             android:name=".service.overlay.SettingsBlockOverlayService"
@@ -229,11 +168,6 @@
         </receiver>
 
         <!-- ── Boot Receiver ─────────────────────────────────────────────── -->
-        <!--
-             directBootAware="true": fires before the user unlocks after reboot.
-             priority="1000"       : fires before other apps' boot receivers.
-             Handles both standard and OEM-specific (HTC/Xiaomi) boot actions.
-        -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:directBootAware="true"
@@ -248,10 +182,6 @@
         </receiver>
 
         <!-- ── Alarm Restart Receiver ────────────────────────────────────── -->
-        <!--
-             AlarmManager-based service resurrection backup.
-             directBootAware="true": can fire before first unlock post-reboot.
-        -->
         <receiver
             android:name=".receiver.AlarmRestartReceiver"
             android:directBootAware="true"
@@ -273,12 +203,6 @@
         </receiver>
 
         <!-- ── App Update Receiver ───────────────────────────────────────── -->
-        <!--
-             Fires after our own APK is updated (Play Store or ADB install).
-             All running services are killed on update — this receiver restarts
-             DnsVpnService and re-schedules the watchdog if VPN filter was active.
-             exported="false": MY_PACKAGE_REPLACED is only sent to our own app.
-        -->
         <receiver
             android:name=".receiver.AppUpdateReceiver"
             android:exported="false">
