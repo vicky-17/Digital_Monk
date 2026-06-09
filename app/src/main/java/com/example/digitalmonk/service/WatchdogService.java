@@ -88,6 +88,11 @@ public class WatchdogService extends Service {
      */
     private Set<ProtectionIssue> lastKnownIssues = null;
 
+    // ✅ NEW: tracks when the block screen was last shown
+    // Allows re-showing after a cooldown even if issues haven't changed
+    private long lastBlockScreenShownMs = 0L;
+    private static final long BLOCK_SCREEN_RESHOW_INTERVAL_MS = 15_000L; // reshow every 15s
+
     // ── Listener interface ────────────────────────────────────────────────────
 
     /**
@@ -351,24 +356,34 @@ public class WatchdogService extends Service {
     private void performProtectionCheck() {
         Set<ProtectionIssue> currentIssues = protectionMonitor.check();
 
-        // Only react when the issue set changes — avoids callback spam
         boolean changed = !currentIssues.equals(lastKnownIssues);
-        if (!changed) return;
 
-        lastKnownIssues = currentIssues;
+        // Always update and notify on change
+        if (changed) {
+            lastKnownIssues = currentIssues;
 
-        Log.d(TAG, "Protection state changed → issues: "
-                + (currentIssues.isEmpty() ? "none" : currentIssues.toString()));
+            Log.d(TAG, "Protection state changed → issues: "
+                    + (currentIssues.isEmpty() ? "none" : currentIssues.toString()));
 
-        // ── Notify external listener (ViewModel / UI) ─────────────────────────
-        ProtectionStateListener listener = protectionStateListener;
-        if (listener != null) {
-            listener.onIssuesChanged(currentIssues);
+            ProtectionStateListener listener = protectionStateListener;
+            if (listener != null) {
+                listener.onIssuesChanged(currentIssues);
+            }
         }
 
-        // ── Built-in reactions ────────────────────────────────────────────────
-        // These run regardless of whether a listener is registered.
-        handleProtectionIssues(currentIssues);
+        if (currentIssues.isEmpty()) return;
+
+        // ✅ Show block screen if:
+        //    (a) issues just appeared (changed from empty/null), OR
+        //    (b) issues are still present after cooldown (user dismissed without fixing)
+        long now = System.currentTimeMillis();
+        boolean shouldShow = changed
+                || (now - lastBlockScreenShownMs >= BLOCK_SCREEN_RESHOW_INTERVAL_MS);
+
+        if (shouldShow) {
+            lastBlockScreenShownMs = now;
+            handleProtectionIssues(currentIssues);
+        }
     }
 
     /**
