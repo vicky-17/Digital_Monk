@@ -110,8 +110,6 @@ public class SettingsPageReader {
             intent.setFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK
                             | Intent.FLAG_ACTIVITY_NO_ANIMATION
-                            | Intent.FLAG_ACTIVITY_NEW_DOCUMENT
-                            | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
             );
             context.startActivity(intent);
 //            Log.i(TAG, "GuardianRedirectActivity launched");

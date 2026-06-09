@@ -24,6 +24,8 @@ import androidx.core.app.NotificationCompat;
 import com.example.digitalmonk.core.utils.AlarmScheduler;
 import com.example.digitalmonk.core.utils.Constants;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
+import com.example.digitalmonk.service.monitor.ProtectionIssue;
+import com.example.digitalmonk.service.monitor.ProtectionStateMonitor;
 import com.example.digitalmonk.service.monitor.SettingsAppMonitor;
 import com.example.digitalmonk.service.monitor.SettingsPageReader;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
@@ -31,24 +33,24 @@ import com.example.digitalmonk.service.vpn.DnsVpnService;
 import com.example.digitalmonk.ui.MainActivity;
 import com.example.digitalmonk.core.utils.NtpFetcher;
 
+import java.util.Set;
+
 /**
- * WatchdogService — Updated for UsageStats-driven settings detection
- * ─────────────────────────────────────────────────────────────────────────────
- * TWO LOOPS now run on separate threads:
-
- * 1. HEALTH CHECK LOOP (every 30s, existing)
+ * WatchdogService — Three parallel loops:
+ *
+ * 1. HEALTH CHECK LOOP (every 30s)
  *    - VPN alive check
- *    - Accessibility frozen check → GuardianOverlayService
-
- * 2. SETTINGS DETECTION LOOP (every 300ms, NEW)
+ *    - NTP offset refresh
+ *
+ * 2. SETTINGS DETECTION LOOP (every 300ms)
  *    - SettingsAppMonitor.poll() → detects settings open/close via UsageStats
  *    - SettingsPageReader.readAndRespond() → reads page content if settings open
  *    - Drives SettingsBlockOverlayService state machine
-
- * Why 300ms? Fast enough to show bottom overlay before user can tap Uninstall
- * (requires ~500ms of deliberate navigation). Cheap enough: UsageStats query
- * on 3s window typically processes <10 events.
- * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * 3. PROTECTION STATE LOOP (every 10s)  ← NEW
+ *    - ProtectionStateMonitor.check() → detects permission gaps and VPN issues
+ *    - Notifies ProtectionStateListener with the current issue set
+ *    - Only fires the listener when the issue set CHANGES (avoids spam)
  */
 public class WatchdogService extends Service {
 
@@ -56,11 +58,11 @@ public class WatchdogService extends Service {
 
     public static final int WATCHDOG_JOB_ID = 42;
 
-    // Health check interval (VPN, accessibility)
-    private static final long HEALTH_CHECK_INTERVAL_MS = 30_000L;
-
-    // Settings detection interval — fast polling
-    private static final long SETTINGS_POLL_INTERVAL_MS = 300L;
+    // ── Loop intervals ────────────────────────────────────────────────────────
+    private static final long HEALTH_CHECK_INTERVAL_MS    = 30_000L;
+    private static final long SETTINGS_POLL_INTERVAL_MS   = 300L;
+    /** Check permissions and VPN state every 10 seconds. */
+    private static final long PROTECTION_CHECK_INTERVAL_MS = 10_000L;
 
     // ── Threads & Handlers ────────────────────────────────────────────────────
     private HandlerThread healthCheckThread;
@@ -69,10 +71,52 @@ public class WatchdogService extends Service {
     private HandlerThread settingsPollThread;
     private Handler       settingsHandler;
 
+    private HandlerThread protectionCheckThread;   // NEW
+    private Handler       protectionHandler;       // NEW
+
     // ── Core dependencies ─────────────────────────────────────────────────────
-    private PrefsManager       prefs;
-    private SettingsAppMonitor settingsMonitor;
-    private SettingsPageReader settingsPageReader;
+    private PrefsManager           prefs;
+    private SettingsAppMonitor     settingsMonitor;
+    private SettingsPageReader     settingsPageReader;
+    private ProtectionStateMonitor protectionMonitor;  // NEW
+
+    // ── Protection state tracking (change detection) ──────────────────────────
+    /**
+     * Last known issue set. We only fire the listener when this changes,
+     * so callers aren't flooded with identical callbacks every 10 seconds.
+     */
+    private Set<ProtectionIssue> lastKnownIssues = null;
+
+    // ── Listener interface ────────────────────────────────────────────────────
+
+    /**
+     * Implement this interface to react to protection state changes.
+     *
+     * onIssuesChanged() is called on the protection-check background thread —
+     * post to the main thread if you need to update UI.
+     *
+     * Wire up via setProtectionStateListener() after obtaining the service
+     * instance, or — more commonly — have WatchdogService drive a static
+     * method or broadcast directly (see onIssuesChanged impl below).
+     */
+    public interface ProtectionStateListener {
+        /**
+         * @param issues  Current set of active issues. Empty = everything healthy.
+         */
+        void onIssuesChanged(Set<ProtectionIssue> issues);
+    }
+
+    private static volatile ProtectionStateListener protectionStateListener = null;
+
+    /** Wire up a listener from outside (e.g. from a ViewModel or Activity). */
+    public static void setProtectionStateListener(ProtectionStateListener listener) {
+        protectionStateListener = listener;
+    }
+
+    /** Remove a previously registered listener. */
+    public static void clearProtectionStateListener() {
+        protectionStateListener = null;
+    }
 
     // ── Static Controller Methods ─────────────────────────────────────────────
 
@@ -111,27 +155,27 @@ public class WatchdogService extends Service {
         super.onCreate();
         prefs = new PrefsManager(this);
 
-        // Health check thread (30s interval)
+        // Loop 1: health check (30s)
         healthCheckThread = new HandlerThread("watchdog-health");
         healthCheckThread.start();
         healthHandler = new Handler(healthCheckThread.getLooper());
 
-        // Settings fast-poll thread (300ms interval)
+        // Loop 2: settings fast-poll (300ms)
         settingsPollThread = new HandlerThread("watchdog-settings-poll");
         settingsPollThread.start();
         settingsHandler = new Handler(settingsPollThread.getLooper());
+
+        // Loop 3: protection state check (10s) ← NEW
+        protectionCheckThread = new HandlerThread("watchdog-protection-check");
+        protectionCheckThread.start();
+        protectionHandler = new Handler(protectionCheckThread.getLooper());
 
         // SettingsAppMonitor with state listener
         settingsMonitor = new SettingsAppMonitor(this, new SettingsAppMonitor.SettingsStateListener() {
             @Override
             public void onSettingsOpened(String packageName) {
-
-                // Initial overlay Applied when settings opened
                 SettingsBlockOverlayService.showBottom(WatchdogService.this);
-
                 if (settingsPageReader != null) settingsPageReader.reset();
-
-                // Schedule an immediate forced read after 1s (root may not be ready at t=0)
                 settingsHandler.postDelayed(() -> {
                     if (settingsMonitor.isSettingsOpen()) {
                         settingsPageReader.readAndRespond(WatchdogService.this, packageName);
@@ -142,7 +186,6 @@ public class WatchdogService extends Service {
             @Override
             public void onSettingsClosed() {
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-
                     if (!settingsMonitor.isSettingsOpen()) {
 //                        Log.d("MONK_DEBUG", "Watchdog: Confirmed settings closed. Triggering HIDE.");
                         if (!SettingsBlockOverlayService.isFullOverlay) {
@@ -156,18 +199,14 @@ public class WatchdogService extends Service {
                     }
                 }, 500); // 500ms delay to account for page transition "flicker"
             }
-
         });
 
-        settingsPageReader = new SettingsPageReader();
-
-//        Log.i(TAG, "WatchdogService created");
+        settingsPageReader  = new SettingsPageReader();
+        protectionMonitor   = new ProtectionStateMonitor(this);  // NEW
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-//        Log.i(TAG, "Watchdog started");
-
         Notification notification = buildNotification();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(Constants.NOTIFICATION_ID_GUARDIAN, notification,
@@ -178,6 +217,7 @@ public class WatchdogService extends Service {
 
         startHealthCheckLoop();
         startSettingsPollLoop();
+        startProtectionCheckLoop();  // NEW
         scheduleJobBackup(this);
         AlarmScheduler.scheduleRepeating(this);
 
@@ -190,7 +230,6 @@ public class WatchdogService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-//        Log.w(TAG, "Task removed — scheduling restart");
         Intent restartIntent = new Intent(getApplicationContext(), WatchdogService.class);
         PendingIntent pi = PendingIntent.getService(
                 getApplicationContext(), 1, restartIntent,
@@ -207,14 +246,15 @@ public class WatchdogService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (healthHandler != null) healthHandler.removeCallbacksAndMessages(null);
-        if (settingsHandler != null) settingsHandler.removeCallbacksAndMessages(null);
-        if (healthCheckThread != null) healthCheckThread.quitSafely();
-        if (settingsPollThread != null) settingsPollThread.quitSafely();
-//        Log.w(TAG, "WatchdogService destroyed");
+        if (healthHandler    != null) healthHandler.removeCallbacksAndMessages(null);
+        if (settingsHandler  != null) settingsHandler.removeCallbacksAndMessages(null);
+        if (protectionHandler != null) protectionHandler.removeCallbacksAndMessages(null);  // NEW
+        if (healthCheckThread   != null) healthCheckThread.quitSafely();
+        if (settingsPollThread  != null) settingsPollThread.quitSafely();
+        if (protectionCheckThread != null) protectionCheckThread.quitSafely();  // NEW
     }
 
-    // ── Health Check Loop (30s) ───────────────────────────────────────────────
+    // ── Loop 1: Health Check (30s) ────────────────────────────────────────────
 
     private final Runnable healthCheckRunnable = new Runnable() {
         @Override
@@ -243,9 +283,6 @@ public class WatchdogService extends Service {
             }
         }
 
-        // Refresh NTP offset every ~30min if lock is active
-
-        PrefsManager p = new PrefsManager(this);  // prefs field already exists, use that
         // Refresh NTP offset periodically while lock is active
         if (prefs.getLockDurationMs() > 0) {
             long lastKnown = prefs.getLastKnownDeviceTime();
@@ -258,10 +295,9 @@ public class WatchdogService extends Service {
                 prefs.setLastKnownDeviceTime(now);
             }
         }
-
     }
 
-    // ── Settings Detection Loop (300ms) ───────────────────────────────────────
+    // ── Loop 2: Settings Detection (300ms) ────────────────────────────────────
 
     private final Runnable settingsPollRunnable = new Runnable() {
         @Override
@@ -290,6 +326,121 @@ public class WatchdogService extends Service {
                     && SettingsBlockOverlayService.isRunning) {
                 SettingsBlockOverlayService.shrinkToBottom(this);
             }
+        }
+    }
+
+    // ── Loop 3: Protection State Check (10s) ─────────────────────────────────
+
+    private final Runnable protectionCheckRunnable = new Runnable() {
+        @Override
+        public void run() {
+            performProtectionCheck();
+            protectionHandler.postDelayed(this, PROTECTION_CHECK_INTERVAL_MS);
+        }
+    };
+
+    private void startProtectionCheckLoop() {
+        protectionHandler.removeCallbacks(protectionCheckRunnable);
+        // First check fires after a short grace period so the service is
+        // fully started before we evaluate anything (avoids false positives
+        // on boot when services are still initialising).
+        protectionHandler.postDelayed(protectionCheckRunnable, 5_000L);
+    }
+
+    private void performProtectionCheck() {
+        Set<ProtectionIssue> currentIssues = protectionMonitor.check();
+
+        // Only react when the issue set changes — avoids callback spam
+        boolean changed = !currentIssues.equals(lastKnownIssues);
+        if (!changed) return;
+
+        lastKnownIssues = currentIssues;
+
+        Log.d(TAG, "Protection state changed → issues: "
+                + (currentIssues.isEmpty() ? "none" : currentIssues.toString()));
+
+        // ── Notify external listener (ViewModel / UI) ─────────────────────────
+        ProtectionStateListener listener = protectionStateListener;
+        if (listener != null) {
+            listener.onIssuesChanged(currentIssues);
+        }
+
+        // ── Built-in reactions ────────────────────────────────────────────────
+        // These run regardless of whether a listener is registered.
+        handleProtectionIssues(currentIssues);
+    }
+
+    /**
+     * Built-in reactions to protection issues.
+     *
+     * Currently: just logs them. Block screen wiring will be added in the
+     * next step once the UI component is ready.
+     *
+     * Convention: react to the highest-priority issue first; lower-priority
+     * issues are still in the set and available for the listener to handle.
+     */
+    private void handleProtectionIssues(Set<ProtectionIssue> issues) {
+        if (issues.isEmpty()) {
+            // Everything is healthy — no action needed
+            return;
+        }
+
+        // Find the highest-priority issue (lowest priority number)
+        ProtectionIssue topIssue = null;
+        for (ProtectionIssue issue : issues) {
+            if (topIssue == null || issue.priority < topIssue.priority) {
+                topIssue = issue;
+            }
+        }
+
+        if (topIssue == null) return;
+
+        switch (topIssue) {
+
+            case VPN_SERVICE_DEAD:
+                // WatchdogService's health loop already handles VPN restarts.
+                // Log here for visibility; no duplicate action needed.
+                Log.w(TAG, "Protection: VPN service is dead (health loop will revive)");
+                break;
+
+            case ANOTHER_VPN_ACTIVE:
+                Log.w(TAG, "Protection: foreign VPN is active — filter may be bypassed");
+                // TODO next step: show block screen with "VPN bypass detected" message
+                break;
+
+            case VPN_PERMISSION_REVOKED:
+                Log.w(TAG, "Protection: VPN permission revoked — parent must re-grant");
+                // TODO next step: show block screen prompting parent to re-grant
+                break;
+
+            case ACCESSIBILITY_DISABLED:
+                Log.w(TAG, "Protection: Accessibility service is off");
+                // TODO next step: show block screen directing to permissions screen
+                break;
+
+            case OVERLAY_PERMISSION_MISSING:
+                Log.w(TAG, "Protection: Overlay permission missing");
+                // TODO next step: show block screen
+                break;
+
+            case USAGE_STATS_MISSING:
+                Log.w(TAG, "Protection: Usage stats permission missing");
+                // TODO next step: show block screen
+                break;
+
+            case BATTERY_OPTIMIZATION_ACTIVE:
+                Log.w(TAG, "Protection: Battery optimization active");
+                // TODO next step: show block screen
+                break;
+
+            case ALWAYS_ON_VPN_NOT_SET:
+                // Informational only — not severe enough to block the screen by itself
+                Log.i(TAG, "Protection: Always-On VPN not set to Digital Monk");
+                break;
+
+            default:
+                Log.w(TAG, "Protection: unhandled issue " + topIssue);
+                break;
         }
     }
 

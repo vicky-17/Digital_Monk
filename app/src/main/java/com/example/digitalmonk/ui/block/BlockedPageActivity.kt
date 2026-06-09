@@ -1,83 +1,90 @@
 package com.example.digitalmonk.ui.block
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.WindowManager
-import androidx.activity.OnBackPressedCallback
+import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.compose.setContent
-import com.example.digitalmonk.core.base.BaseActivity
+import androidx.annotation.RequiresApi
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
 
-class BlockedPageActivity : BaseActivity() {
+class BlockedPageActivity : ComponentActivity() {
 
+    @RequiresApi(Build.VERSION_CODES.O_MR1)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Keep screen on and make it show over lock screen if needed
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        )
+        // Keep screen on
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Block hardware back button
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                // Swallow back — do nothing
-            }
-        })
+        // Show over lock screen
+        setShowWhenLocked(true)
+
+        // True immersive — hide status bar + nav bar
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+
+        // Block back
+        onBackPressedDispatcher.addCallback(this) {
+            // Swallow
+        }
+
+        val appName = intent.getStringExtra("app_name") ?: "This"
 
         setContent {
             DigitalMonkTheme {
-                BlockedPageScreen(
-                    onGoHome = {
-                        val home = Intent(Intent.ACTION_MAIN).apply {
-                            addCategory(Intent.CATEGORY_HOME)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                ProtectionGateScreen(
+                    emoji    = "🚫",
+                    title    = "$appName is Blocked",
+                    message  = "This page is restricted.",
+                    severity = GateSeverity.CRITICAL,
+                    actions  = listOf(
+                        GateAction("Go to Home Screen") {
+                            startActivity(
+                                Intent(Intent.ACTION_MAIN).apply {
+                                    addCategory(Intent.CATEGORY_HOME)
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                            )
+                            finish()
                         }
-                        startActivity(home)
-                        finish()
-                    }
+                    )
                 )
             }
         }
     }
 
-    // Re-launch this screen if user navigated away via Home/Recents
-    override fun onResume() {
-        super.onResume()
-        // Already on screen — no action needed
-    }
-
-    override fun onRestart() {
-        super.onRestart()
-        // User came back from recents — still blocked, nothing to do
-    }
-
-    // Block all hardware key events except volume (which you can't block anyway)
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        return when (keyCode) {
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_APP_SWITCH,  // Recents button
-            KeyEvent.KEYCODE_HOME,         // Some devices send this
-            KeyEvent.KEYCODE_MENU -> true  // Swallow
-            else -> super.onKeyDown(keyCode, event)
+    // Re-hide bars if system temporarily shows them via swipe
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
-    // Intercept ALL touch events at the window level before Compose sees them
-    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        // Let Compose handle it — the pointerInput in BlockedPageScreen
-        // will consume everything except the Go Home button click
-        return super.dispatchTouchEvent(ev)
-    }
+    // Block all hardware keys
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean = true
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean = true
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent?): Boolean = true
 
     override fun onUserLeaveHint() {
-        // Called when Home is pressed — we can't prevent it,
-        // but we can relaunch ourselves
-        val relaunch = Intent(this, BlockedPageActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        startActivity(relaunch)
+        super.onUserLeaveHint()
+        startActivity(
+            Intent(this, BlockedPageActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        )
     }
 }
