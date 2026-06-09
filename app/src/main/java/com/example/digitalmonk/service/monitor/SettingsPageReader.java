@@ -10,6 +10,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 import com.example.digitalmonk.service.accessibility.GuardianRedirectActivity;
+import com.example.digitalmonk.ui.block.BlockedPageActivity;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -106,18 +107,10 @@ public class SettingsPageReader {
     private void launchRedirectActivity(Context context) {
         escapeInProgress = true;
         try {
-            Intent intent = new Intent(context, com.example.digitalmonk.ui.block.BlockedPageActivity.class);
-            intent.setFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK
-                            | Intent.FLAG_ACTIVITY_NO_ANIMATION
-            );
-            context.startActivity(intent);
-//            Log.i(TAG, "GuardianRedirectActivity launched");
+            context.startActivity(BlockedPageActivity.Companion.settingsBlock(context));
         } catch (Exception e) {
-//            Log.e(TAG, "Failed to launch GuardianRedirectActivity", e);
             escapeInProgress = false;
         }
-
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             escapeInProgress = false;
         }, 1500L);

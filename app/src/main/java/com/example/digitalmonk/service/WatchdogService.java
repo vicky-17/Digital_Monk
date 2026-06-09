@@ -32,6 +32,7 @@ import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
 import com.example.digitalmonk.ui.MainActivity;
 import com.example.digitalmonk.core.utils.NtpFetcher;
+import com.example.digitalmonk.ui.block.BlockedPageActivity;
 
 import java.util.Set;
 
@@ -380,61 +381,55 @@ public class WatchdogService extends Service {
      * issues are still in the set and available for the listener to handle.
      */
     private void handleProtectionIssues(Set<ProtectionIssue> issues) {
-        if (issues.isEmpty()) {
-            // Everything is healthy — no action needed
-            return;
-        }
+        if (issues.isEmpty()) return;
 
-        // Find the highest-priority issue (lowest priority number)
         ProtectionIssue topIssue = null;
         for (ProtectionIssue issue : issues) {
             if (topIssue == null || issue.priority < topIssue.priority) {
                 topIssue = issue;
             }
         }
-
         if (topIssue == null) return;
 
         switch (topIssue) {
 
             case VPN_SERVICE_DEAD:
-                // WatchdogService's health loop already handles VPN restarts.
-                // Log here for visibility; no duplicate action needed.
-                Log.w(TAG, "Protection: VPN service is dead (health loop will revive)");
+                // Health loop handles restart — no block screen needed
+                Log.w(TAG, "Protection: VPN service dead (health loop will revive)");
                 break;
 
             case ANOTHER_VPN_ACTIVE:
-                Log.w(TAG, "Protection: foreign VPN is active — filter may be bypassed");
-                // TODO next step: show block screen with "VPN bypass detected" message
+                Log.w(TAG, "Protection: foreign VPN active — showing block screen");
+                startActivity(BlockedPageActivity.Companion.anotherVpnActive(this));
                 break;
 
             case VPN_PERMISSION_REVOKED:
-                Log.w(TAG, "Protection: VPN permission revoked — parent must re-grant");
-                // TODO next step: show block screen prompting parent to re-grant
+                Log.w(TAG, "Protection: VPN permission revoked — showing block screen");
+                startActivity(BlockedPageActivity.Companion.vpnPermissionRevoked(this));
                 break;
 
             case ACCESSIBILITY_DISABLED:
-                Log.w(TAG, "Protection: Accessibility service is off");
-                // TODO next step: show block screen directing to permissions screen
+                Log.w(TAG, "Protection: Accessibility off — showing block screen");
+                startActivity(BlockedPageActivity.Companion.accessibilityDisabled(this));
                 break;
 
             case OVERLAY_PERMISSION_MISSING:
-                Log.w(TAG, "Protection: Overlay permission missing");
-                // TODO next step: show block screen
+                Log.w(TAG, "Protection: Overlay permission missing — showing block screen");
+                startActivity(BlockedPageActivity.Companion.overlayPermissionMissing(this));
                 break;
 
             case USAGE_STATS_MISSING:
-                Log.w(TAG, "Protection: Usage stats permission missing");
-                // TODO next step: show block screen
+                Log.w(TAG, "Protection: Usage stats missing — showing block screen");
+                startActivity(BlockedPageActivity.Companion.usageStatsMissing(this));
                 break;
 
             case BATTERY_OPTIMIZATION_ACTIVE:
-                Log.w(TAG, "Protection: Battery optimization active");
-                // TODO next step: show block screen
+                Log.w(TAG, "Protection: Battery optimization active — showing block screen");
+                startActivity(BlockedPageActivity.Companion.batteryOptimizationActive(this));
                 break;
 
             case ALWAYS_ON_VPN_NOT_SET:
-                // Informational only — not severe enough to block the screen by itself
+                // Informational only — not severe enough to block
                 Log.i(TAG, "Protection: Always-On VPN not set to Digital Monk");
                 break;
 
