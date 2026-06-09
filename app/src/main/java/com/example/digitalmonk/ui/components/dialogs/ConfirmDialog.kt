@@ -32,15 +32,13 @@ fun ConfirmDialog(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF94A3B8) // Muted slate color
+                color = Color(0xFF94A3B8)
             )
         },
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF3B82F6)
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
             ) {
                 Text("Confirm")
             }
@@ -50,6 +48,6 @@ fun ConfirmDialog(
                 Text("Cancel", color = Color(0xFF94A3B8))
             }
         },
-        containerColor = Color(0xFF1E293B) // Matches your dark theme
+        containerColor = Color(0xFF1E293B)
     )
 }

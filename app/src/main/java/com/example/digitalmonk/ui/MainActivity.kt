@@ -5,13 +5,16 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -49,22 +52,39 @@ import com.example.digitalmonk.ui.sidebar.PermissionsSidebar
 import com.example.digitalmonk.ui.theme.DigitalMonkTheme
 import kotlinx.coroutines.delay
 import com.example.digitalmonk.ui.dashboard.DashboardScreen
+import com.example.digitalmonk.ui.security.SecurityScreen
 
 // ── Color palette ─────────────────────────────────────────────────────────────
-private val BgDeep       = Color(0xFF080E1A)
-private val BgCard       = Color(0xFF111827)
-private val AccentBlue   = Color(0xFF3B82F6)
-private val AccentRed    = Color(0xFFEF4444)
-private val TextPrimary  = Color(0xFFF1F5F9)
-private val TextSecond   = Color(0xFF64748B)
-private val TextMuted    = Color(0xFF334155)
+private val BgDeep      = Color(0xFF080E1A)
+private val BgCard      = Color(0xFF111827)
+private val AccentBlue  = Color(0xFF3B82F6)
+private val AccentRed   = Color(0xFFEF4444)
+private val TextPrimary = Color(0xFFF1F5F9)
+private val TextSecond  = Color(0xFF64748B)
+private val TextMuted   = Color(0xFF334155)
 
 // ── Bottom Navigation Screen Routes ───────────────────────────────────────────
-enum class Screen(val route: String, val title: String, val icon: String, val contentDescription: String) {
-    DASHBOARD("dashboard", "Dashboard", "📊","Dashboard"),
+enum class Screen(
+    val route: String,
+    val title: String,
+    val icon: String,
+    val contentDescription: String
+) {
+    DASHBOARD("dashboard", "Dashboard", "📊", "Dashboard"),
     LOCKS("locks", "Locks", "🔒️", "Locks"),
-    SECURITY("security", "Security", "🛡️","WebLock"),
-    SETTINGS("settings", "Settings", "⚙️","Settings")
+    SECURITY("security", "Security", "🛡️", "WebLock"),
+    SETTINGS("settings", "Settings", "⚙️", "Settings")
+}
+
+// ── Top-level navigation destinations ─────────────────────────────────────────
+// Sealed class instead of a Boolean flag — scales cleanly if you add more
+// full-screen destinations later (e.g. AppLockDetail, ScheduleEditor, etc.)
+sealed class AppDestination {
+    /** The main shell: TopBar + BottomBar + tab content */
+    object Main : AppDestination()
+
+    /** Full-screen Permissions screen — no TopBar / BottomBar */
+    object Permissions : AppDestination()
 }
 
 data class PermissionsState(
@@ -106,13 +126,13 @@ class MainActivity : BaseActivity() {
         val sharedPrefs = context.getSharedPreferences("monk_prefs", MODE_PRIVATE)
         return PermissionsState(
             isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context),
-            isBatteryExempt = PersistenceManager.isBatteryOptimizationDisabled(context),
-            canDrawOverlays = PersistenceManager.canDrawOverlays(context),
-            isDeviceAdmin = MonkDeviceAdminReceiver.isAdminActive(context),
-            hasUsageStats = PersistenceManager.hasUsageStatsPermission(context),
-            hasNotification = PermissionHelper.hasNotificationPermission(context),
-            visitedAutostart = sharedPrefs.getBoolean("visited_autostart", false),
-            visitedMiuiPower = sharedPrefs.getBoolean("visited_miui_power", false),
+            isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context),
+            canDrawOverlays   = PersistenceManager.canDrawOverlays(context),
+            isDeviceAdmin     = MonkDeviceAdminReceiver.isAdminActive(context),
+            hasUsageStats     = PersistenceManager.hasUsageStatsPermission(context),
+            hasNotification   = PermissionHelper.hasNotificationPermission(context),
+            visitedAutostart  = sharedPrefs.getBoolean("visited_autostart", false),
+            visitedMiuiPower  = sharedPrefs.getBoolean("visited_miui_power", false),
             visitedMiuiBgPopup = sharedPrefs.getBoolean("visited_miui_bg_popup", false)
         )
     }
@@ -125,6 +145,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
     @Composable
     fun AppContent(prefs: PrefsManager) {
         var isUnlocked by remember { mutableStateOf(false) }
@@ -153,21 +174,22 @@ class MainActivity : BaseActivity() {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // NEW: Main Navigation Shell (Top Bar + Bottom Bar + Screen Wrapper)
+    // Main Navigation Shell
     // ─────────────────────────────────────────────────────────────────────────
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MainNavigationShell(prefs: PrefsManager, onLock: () -> Unit) {
-        var currentScreen by remember { mutableStateOf(Screen.DASHBOARD) }
-        var sidebarOpen by remember { mutableStateOf(false) }
+        var currentScreen  by remember { mutableStateOf(Screen.DASHBOARD) }
+        var sidebarOpen    by remember { mutableStateOf(false) }
 
-        val context = LocalContext.current
+        // ── Single source of truth for which top-level destination is active ──
+        var destination by remember { mutableStateOf<AppDestination>(AppDestination.Main) }
+
+        val context       = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
 
-        var refreshKey by remember { mutableLongStateOf(0L) }
+        var refreshKey       by remember { mutableLongStateOf(0L) }
         var permissionsState by remember { mutableStateOf(getPermissionsState(context)) }
-
-        var showPermissions by remember { mutableStateOf(false) }
 
         LaunchedEffect(refreshKey) {
             permissionsState = getPermissionsState(context)
@@ -185,129 +207,183 @@ class MainActivity : BaseActivity() {
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
 
+        // ── System back button / gesture handling ─────────────────────────────
+        // Intercept back press when we're NOT on Main, navigate back instead of
+        // closing the app. BackHandler is inactive when destination == Main so
+        // Android's default back behaviour (exit app) is preserved.
+        BackHandler(enabled = destination != AppDestination.Main) {
+            destination = AppDestination.Main
+        }
+
         val scrimAlpha by animateFloatAsState(
-            targetValue = if (sidebarOpen) 0.6f else 0f,
-            animationSpec = tween(300),
-            label = "scrim"
+            targetValue    = if (sidebarOpen) 0.6f else 0f,
+            animationSpec  = tween(300),
+            label          = "scrim"
         )
 
-        Box(modifier = Modifier.fillMaxSize().background(BgDeep)) {
-
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = {
-                            Text(
-                                text = "DigitalMonk",
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
-                            )
-                        },
-                        navigationIcon = {
-                            IconButton(
-                                onClick = { sidebarOpen = true },
-                                modifier = Modifier.size(48.dp) // Ensures a clean touch target area
-                            ){
-                                Icon(
-                                    // Using Icons.Rounded gives a thicker, bolder look than Icons.Default
-                                    imageVector = Icons.Rounded.Menu,
-                                    contentDescription = "Open Navigation Menu",
-                                    tint = TextPrimary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        },
-                        actions = {
-                            IconButton(
-                                onClick = {},
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.AccountCircle,
-                                    contentDescription = "View Account Profile",
-                                    tint = TextSecond,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        }
+        // ── AnimatedContent: only ONE destination in the composition tree ─────
+        // slideInHorizontally / slideOutHorizontally gives the standard Android
+        // "push forward / pop back" feel. The Scaffold + Sidebar are only
+        // composed when destination == Main, so PermissionsScreen gets a clean,
+        // lean composition tree — fixes the Realme crash.
+        AnimatedContent(
+            targetState = destination,
+            transitionSpec = {
+                if (targetState == AppDestination.Permissions) {
+                    // Navigating forward → slide in from right, old screen exits left
+                    slideInHorizontally(
+                        animationSpec  = tween(300),
+                        initialOffsetX = { fullWidth -> fullWidth }
+                    ) togetherWith slideOutHorizontally(
+                        animationSpec = tween(300),
+                        targetOffsetX = { fullWidth -> -fullWidth }
                     )
-                },
-                bottomBar = {
-                    NavigationBar(
-                        containerColor = BgCard,
-                        tonalElevation = 8.dp
-                    ) {
-                        Screen.entries.forEach { screen ->
-                            NavigationBarItem(
-                                selected = currentScreen == screen,
-                                onClick = { currentScreen = screen },
-                                label = { Text(screen.title, fontSize = 11.sp) },
-                                icon = { Text(screen.icon, fontSize = 20.sp) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = AccentBlue,
-                                    selectedTextColor = TextPrimary,
-                                    unselectedIconColor = TextSecond,
-                                    unselectedTextColor = TextSecond,
-                                    indicatorColor = BgDeep
+                } else {
+                    // Navigating back → slide in from left, old screen exits right
+                    slideInHorizontally(
+                        animationSpec  = tween(300),
+                        initialOffsetX = { fullWidth -> -fullWidth }
+                    ) togetherWith slideOutHorizontally(
+                        animationSpec = tween(300),
+                        targetOffsetX = { fullWidth -> fullWidth }
+                    )
+                }
+            },
+            label = "destination_transition"
+        ) { currentDestination ->
+
+            when (currentDestination) {
+
+                // ── MAIN shell (Scaffold + sidebar) ───────────────────────────
+                AppDestination.Main -> {
+                    Box(modifier = Modifier.fillMaxSize().background(BgDeep)) {
+
+                        Scaffold(
+                            topBar = {
+                                TopAppBar(
+                                    title = {
+                                        Text(
+                                            text = "DigitalMonk",
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
+                                        )
+                                    },
+                                    navigationIcon = {
+                                        IconButton(
+                                            onClick   = { sidebarOpen = true },
+                                            modifier  = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector     = Icons.Rounded.Menu,
+                                                contentDescription = "Open Navigation Menu",
+                                                tint            = TextPrimary,
+                                                modifier        = Modifier.size(32.dp)
+                                            )
+                                        }
+                                    },
+                                    actions = {
+                                        IconButton(
+                                            onClick  = {},
+                                            modifier = Modifier.size(48.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector     = Icons.Rounded.AccountCircle,
+                                                contentDescription = "View Account Profile",
+                                                tint            = TextSecond,
+                                                modifier        = Modifier.size(32.dp)
+                                            )
+                                        }
+                                    }
                                 )
+                            },
+                            bottomBar = {
+                                NavigationBar(
+                                    containerColor = BgCard,
+                                    tonalElevation = 8.dp
+                                ) {
+                                    Screen.entries.forEach { screen ->
+                                        NavigationBarItem(
+                                            selected = currentScreen == screen,
+                                            onClick  = { currentScreen = screen },
+                                            label    = { Text(screen.title, fontSize = 11.sp) },
+                                            icon     = { Text(screen.icon, fontSize = 20.sp) },
+                                            colors   = NavigationBarItemDefaults.colors(
+                                                selectedIconColor   = AccentBlue,
+                                                selectedTextColor   = TextPrimary,
+                                                unselectedIconColor = TextSecond,
+                                                unselectedTextColor = TextSecond,
+                                                indicatorColor      = BgDeep
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            containerColor = BgDeep
+                        ) { innerPadding ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(innerPadding)
+                            ) {
+                                when (currentScreen) {
+                                    Screen.DASHBOARD -> DashboardScreen(
+                                        prefs           = prefs,
+                                        refreshKey      = refreshKey,
+                                        onRefresh       = { refreshKey = System.currentTimeMillis() },
+                                        onChangePinClick = {
+                                            startActivity(Intent(this@MainActivity, PinSetupActivity::class.java))
+                                        }
+                                    )
+                                    Screen.LOCKS    -> FullScreenPlaceholder("🛡️ App & Website Locks")
+                                    Screen.SECURITY -> SecurityScreen(prefs = prefs)
+                                    Screen.SETTINGS -> SettingsScreen(
+                                        // Flip destination → Compose discards the Scaffold tree
+                                        // and only renders PermissionsScreen in its place
+                                        onNavigateToPermissions = {
+                                            destination = AppDestination.Permissions
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Scrim — rendered above Scaffold, below sidebar
+                        if (scrimAlpha > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .alpha(scrimAlpha)
+                                    .background(Color.Black)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures { sidebarOpen = false }
+                                    }
                             )
                         }
-                    }
-                },
-                containerColor = BgDeep
-            ) { innerPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    // Dynamically render screens inside full view space configuration
-                    when (currentScreen) {
-                        Screen.DASHBOARD -> DashboardScreen(
-                            prefs = prefs,
-                            refreshKey = refreshKey,
-                            onRefresh = { refreshKey = System.currentTimeMillis() },
-                            onChangePinClick = { startActivity(Intent(this@MainActivity, PinSetupActivity::class.java)) }
-                        )
-                        Screen.LOCKS -> FullScreenPlaceholder("🛡️ App & Website Locks")
-                        Screen.SECURITY -> FullScreenPlaceholder("📈 Security & Activity")
-                        Screen.SETTINGS -> SettingsScreen(
-                            onNavigateToPermissions = { showPermissions = true }
-                        )
+
+                        // Sidebar — slides in from left, globally accessible
+                        AnimatedVisibility(
+                            visible = sidebarOpen,
+                            enter   = slideInHorizontally(initialOffsetX = { -it }),
+                            exit    = slideOutHorizontally(targetOffsetX = { -it })
+                        ) {
+                            PermissionsSidebar(
+                                prefs            = prefs,
+                                permissionsState = permissionsState,
+                                onRefresh        = { refreshKey = System.currentTimeMillis() },
+                                onClose          = { sidebarOpen = false }
+                            )
+                        }
                     }
                 }
-            }
 
-            // Full-screen Permissions overlay — hides TopBar + BottomBar
-            if (showPermissions) {
-                PermissionsScreen(
-                    onBackClick = { showPermissions = false }
-                )
-            }
-
-            // Sidebar overlays remain globally accessible above application stack
-            if (scrimAlpha > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(scrimAlpha)
-                        .background(Color.Black)
-                        .pointerInput(Unit) { detectTapGestures { sidebarOpen = false } }
-                )
-            }
-
-            AnimatedVisibility(
-                visible = sidebarOpen,
-                enter = slideInHorizontally(initialOffsetX = { -it }),
-                exit = slideOutHorizontally(targetOffsetX = { -it })
-            ) {
-                PermissionsSidebar(
-                    prefs = prefs,
-                    permissionsState = permissionsState,
-                    onRefresh = { refreshKey = System.currentTimeMillis() },
-                    onClose = { sidebarOpen = false }
-                )
+                // ── PERMISSIONS full-screen (no TopBar / BottomBar) ───────────
+                // Only this composable is in the tree — Scaffold is fully gone.
+                AppDestination.Permissions -> {
+                    PermissionsScreen(
+                        onBackClick = { destination = AppDestination.Main }
+                    )
+                }
             }
         }
     }
@@ -315,14 +391,15 @@ class MainActivity : BaseActivity() {
     @Composable
     fun FullScreenPlaceholder(label: String) {
         Box(
-            modifier = Modifier.fillMaxSize().background(BgDeep),
+            modifier        = Modifier.fillMaxSize().background(BgDeep),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = label, color = TextSecond, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Text(
+                text       = label,
+                color      = TextSecond,
+                fontSize   = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
-
-
-
-

@@ -289,4 +289,53 @@ public class PermissionHelper {
             // Gracefully ignore on non-Xiaomi setups or unexpected OS variant drops
         }
     }
+    public static void openXiaomiBackgroundPopupSettings(Context context) {
+        try {
+            Intent intent = new Intent();
+            intent.setComponent(new ComponentName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.permissions.PermissionsEditorActivity"
+            ));
+            intent.putExtra("extra_pkgname", context.getPackageName());
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Exception ignored) {
+            // Fallback to general security center
+            try {
+                Intent fallback = new Intent();
+                fallback.setComponent(new ComponentName(
+                        "com.miui.securitycenter",
+                        "com.miui.securitycenter.MainActivity"
+                ));
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(fallback);
+            } catch (Exception e) {
+                // Non-Xiaomi, silently ignore
+            }
+        }
+    }
+
+    public static void openXiaomiPowerSavingSettings(Context context) {
+        try {
+            Intent intent = new Intent();
+            intent.setComponent(new ComponentName(
+                    "com.miui.powerkeeper",
+                    "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity"
+            ));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Exception ignored) {
+            try {
+                Intent fallback = new Intent();
+                fallback.setComponent(new ComponentName(
+                        "com.miui.securitycenter",
+                        "com.miui.securitycenter.MainActivity"
+                ));
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(fallback);
+            } catch (Exception e) {}
+        }
+    }
+
+
 }

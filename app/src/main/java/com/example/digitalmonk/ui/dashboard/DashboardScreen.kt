@@ -21,15 +21,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import com.example.digitalmonk.data.local.prefs.PrefsManager
 import com.example.digitalmonk.service.vpn.DnsVpnService
-import com.example.digitalmonk.ui.auth.PinSetupActivity
 import com.example.digitalmonk.ui.components.common.SectionLabel
 import com.example.digitalmonk.ui.sidebar.formatRemainingTime
+import com.example.digitalmonk.ui.components.dialogs.AlwaysOnVpnDialog
+import com.example.digitalmonk.ui.components.dialogs.LockSettingsDialog
 
 private val BgDeep      = Color(0xFF080E1A)
 private val BgCard      = Color(0xFF111827)
@@ -257,139 +254,7 @@ private fun DashboardActionCard(
     }
 }
 
-// ── Dialogs (moved here from MainActivity) ────────────────────────────────────
 
-@Composable
-private fun AlwaysOnVpnDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🛡️", fontSize = 48.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Make Filter Permanent", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Enable \"Always-On VPN\" so the filter stays active even after a restart and can't be bypassed.",
-                    fontSize = 14.sp, color = Color(0xFF94A3B8), textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-                listOf(
-                    "1️⃣" to "Tap 'Open VPN Settings' below",
-                    "2️⃣" to "Find 'Digital Monk Shield'",
-                    "3️⃣" to "Tap the ⚙️ gear icon next to it",
-                    "4️⃣" to "Enable 'Always-on VPN'",
-                    "5️⃣" to "Optional: Enable 'Block without VPN'"
-                ).forEach { (emoji, text) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(emoji, fontSize = 16.sp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text, fontSize = 13.sp, color = Color(0xFFCBD5E1))
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("Open VPN Settings", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = onDismiss) {
-                    Text("Maybe Later", color = Color(0xFF64748B), fontSize = 13.sp)
-                }
-            }
-        }
-    }
-}
 
-@Composable
-private fun LockSettingsDialog(onConfirm: (Long) -> Unit, onDismiss: () -> Unit) {
-    var days by remember { mutableStateOf("") }
-    var hours by remember { mutableStateOf("") }
-    var minutes by remember { mutableStateOf("") }
-    var showConfirmStep by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                if (!showConfirmStep) {
-                    Text("⏳ Lock Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Set duration. You will NOT be able to disable any protection during this time.",
-                        fontSize = 13.sp, color = Color(0xFF94A3B8), lineHeight = 18.sp)
-                    Spacer(Modifier.height(20.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(
-                            "Days" to days,
-                            "Hours" to hours,
-                            "Mins" to minutes
-                        ).forEachIndexed { index, (label, value) ->
-                            OutlinedTextField(
-                                value = value,
-                                onValueChange = { when(index) { 0 -> days = it; 1 -> hours = it; 2 -> minutes = it } },
-                                label = { Text(label, color = Color(0xFF64748B)) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF3B82F6),
-                                    unfocusedBorderColor = Color(0xFF334155),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
-                                ),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(20.dp))
-                    val totalMs = (days.toLongOrNull() ?: 0L) * 86_400_000L +
-                            (hours.toLongOrNull() ?: 0L) * 3_600_000L +
-                            (minutes.toLongOrNull() ?: 0L) * 60_000L
-                    Button(
-                        onClick = { if (totalMs > 0) showConfirmStep = true },
-                        enabled = totalMs > 0,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) { Text("Next →", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                        Text("Cancel", color = Color(0xFF64748B), fontSize = 14.sp)
-                    }
-                } else {
-                    val d = days.toLongOrNull() ?: 0L
-                    val h = hours.toLongOrNull() ?: 0L
-                    val m = minutes.toLongOrNull() ?: 0L
-                    val totalMs = d * 86_400_000L + h * 3_600_000L + m * 60_000L
-                    Text("⚠️ Are you sure?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        "You cannot disable any protections for ${if (d > 0) "${d}d " else ""}${if (h > 0) "${h}h " else ""}${m}m. This cannot be undone.",
-                        fontSize = 14.sp, color = Color(0xFF94A3B8), lineHeight = 20.sp
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    Button(
-                        onClick = { onConfirm(totalMs) },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) { Text("🔒 Confirm Lock", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { showConfirmStep = false }, modifier = Modifier.fillMaxWidth()) {
-                        Text("← Go Back", color = Color(0xFF64748B), fontSize = 14.sp)
-                    }
-                }
-            }
-        }
-    }
-}
+

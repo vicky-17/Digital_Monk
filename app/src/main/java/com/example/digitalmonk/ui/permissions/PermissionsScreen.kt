@@ -1,15 +1,19 @@
 package com.example.digitalmonk.ui.permissions
 
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -30,27 +34,44 @@ fun PermissionsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Refresh state when navigating to screen layout context
+    // ── Device Admin launcher ─────────────────────────────────────────────────
+    // ACTION_ADD_DEVICE_ADMIN must be launched from an Activity context.
+    // We use a result launcher here (inside the Composition, which has Activity context)
+    // and observe the one-shot Intent emitted by the ViewModel.
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Re-check permissions after the user returns from the system dialog
+        viewModel.checkAllPermissions()
+        viewModel.onDeviceAdminIntentHandled()
+    }
+
+    LaunchedEffect(uiState.pendingDeviceAdminIntent) {
+        uiState.pendingDeviceAdminIntent?.let { intent ->
+            deviceAdminLauncher.launch(intent)
+        }
+    }
+
+    // Refresh state when the screen becomes active
     DisposableEffect(Unit) {
         viewModel.checkAllPermissions()
         onDispose { }
     }
 
     PermissionsScreenContent(
-        onBackClick = onBackClick,
+        onBackClick            = onBackClick,
         isAccessibilityGranted = uiState.isAccessibilityGranted,
-        isDeviceAdminGranted = uiState.isDeviceAdminGranted,
-        isUsageStatsGranted = uiState.isUsageStatsGranted,
-        isOverlayGranted = uiState.isOverlayGranted,
-        isAlwaysOnVpnGranted = uiState.isAlwaysOnVpnGranted,
-        isBatteryExempt = uiState.isBatteryExempt,
-        hasNotification = uiState.hasNotification,
-        visitedAutostart = uiState.visitedAutostart,
-        visitedMiuiPower = uiState.visitedMiuiPower,
-        visitedMiuiBgPopup = uiState.visitedMiuiBgPopup,
-        isXiaomiDevice = Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true),
-        hasOemAutostart = true,
-        onRequestPermission = { type -> viewModel.triggerPermissionIntent(type) }
+        isDeviceAdminGranted   = uiState.isDeviceAdminGranted,
+        isUsageStatsGranted    = uiState.isUsageStatsGranted,
+        isOverlayGranted       = uiState.isOverlayGranted,
+        isAlwaysOnVpnGranted   = uiState.isAlwaysOnVpnGranted,
+        isBatteryExempt        = uiState.isBatteryExempt,
+        hasNotification        = uiState.hasNotification,
+        visitedAutostart       = uiState.visitedAutostart,
+        visitedMiuiBgPopup     = uiState.visitedMiuiBgPopup,
+        isXiaomiDevice         = Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true),
+        hasOemAutostart        = true,
+        onRequestPermission    = { type -> viewModel.triggerPermissionIntent(type) }
     )
 }
 
@@ -66,7 +87,6 @@ fun PermissionsScreenContent(
     isBatteryExempt: Boolean,
     hasNotification: Boolean,
     visitedAutostart: Boolean,
-    visitedMiuiPower: Boolean,
     visitedMiuiBgPopup: Boolean,
     isXiaomiDevice: Boolean,
     hasOemAutostart: Boolean,
@@ -76,18 +96,11 @@ fun PermissionsScreenContent(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "System Permissions",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("System Permissions", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.Rounded.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -120,7 +133,6 @@ fun PermissionsScreenContent(
                 )
             }
 
-            // --- CRITICAL SECTION ---
             item { SectionHeader(title = "Critical Services") }
 
             item {
@@ -153,21 +165,11 @@ fun PermissionsScreenContent(
                 )
             }
 
-            // --- OEM/XIAOMI SPECIFIC LAYER ---
             if (isXiaomiDevice || hasOemAutostart) {
                 item { SectionHeader(title = "Background Stability (OEM Settings)") }
             }
 
             if (isXiaomiDevice) {
-                item {
-                    PermissionCard(
-                        title = "MIUI Power Saving (Xiaomi)",
-                        description = "MIUI has an independent aggressive resource manager. Open configuration layout and set context to 'No restrictions'.",
-                        icon = Icons.Rounded.ElectricBolt,
-                        isGranted = visitedMiuiPower,
-                        onGrantClick = { onRequestPermission("MIUI_POWER") }
-                    )
-                }
                 item {
                     PermissionCard(
                         title = "Background Pop-up Windows (MIUI)",
@@ -191,7 +193,6 @@ fun PermissionsScreenContent(
                 }
             }
 
-            // --- SECURITY & METRICS SECTION ---
             item { SectionHeader(title = "Security & Analytics") }
 
             item {
@@ -208,7 +209,7 @@ fun PermissionsScreenContent(
                 PermissionCard(
                     title = "Always-On VPN Protection",
                     description = "Locks down device internet access. Ensures your custom web filters and content blocks cannot be bypassed or disabled.",
-                    icon = Icons.Rounded.VpnLock, // Material design icon matching network utility setups
+                    icon = Icons.Rounded.VpnLock,
                     isGranted = isAlwaysOnVpnGranted,
                     onGrantClick = { onRequestPermission("ALWAYS_ON_VPN") }
                 )
@@ -263,24 +264,20 @@ fun PermissionCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isGranted) {
-                Color(0xFF0D2B1A) // Deep green tint matching your theme layout style[cite: 1]
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-            }
+            containerColor = if (isGranted) Color(0xFF0D2B1A)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         )
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .size(44.dp)
                     .background(
-                        color = if (isGranted) Color(0xFF16A34A).copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        color = if (isGranted) Color(0xFF16A34A).copy(alpha = 0.15f)
+                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(12.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -296,19 +293,9 @@ fun PermissionCard(
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = description,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    color = Color(0xFF94A3B8)
-                )
+                Text(description, fontSize = 12.sp, lineHeight = 16.sp, color = Color(0xFF94A3B8))
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (isGranted) {
@@ -321,7 +308,7 @@ fun PermissionCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Permission Active",
+                            "Permission Active",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF4CAF50)
@@ -333,7 +320,7 @@ fun PermissionCard(
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White
+                            contentColor   = Color.White
                         ),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                         modifier = Modifier.height(34.dp)
@@ -344,7 +331,7 @@ fun PermissionCard(
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "Activate Setting", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Activate Setting", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -352,26 +339,26 @@ fun PermissionCard(
     }
 }
 
-// --- INTERACTIVE SYSTEM PREVIEW ---
+// ── Previews ──────────────────────────────────────────────────────────────────
+
 @Preview(name = "Pending Action States", showBackground = true, backgroundColor = 0xFF0F172A)
 @Composable
 fun PermissionsScreenPendingPreview() {
     DigitalMonkTheme {
         PermissionsScreenContent(
-            onBackClick = {},
+            onBackClick            = {},
             isAccessibilityGranted = false,
-            isDeviceAdminGranted = false,
-            isUsageStatsGranted = false,
-            isOverlayGranted = false,
-            isBatteryExempt = false,
-            hasNotification = false,
-            visitedAutostart = false,
-            visitedMiuiPower = false,
-            visitedMiuiBgPopup = false,
-            isXiaomiDevice = true,
-            hasOemAutostart = true,
-            onRequestPermission = {},
-            isAlwaysOnVpnGranted = false
+            isDeviceAdminGranted   = false,
+            isUsageStatsGranted    = false,
+            isOverlayGranted       = false,
+            isBatteryExempt        = false,
+            hasNotification        = false,
+            visitedAutostart       = false,
+            visitedMiuiBgPopup     = false,
+            isXiaomiDevice         = true,
+            hasOemAutostart        = true,
+            onRequestPermission    = {},
+            isAlwaysOnVpnGranted   = false
         )
     }
 }
@@ -381,20 +368,19 @@ fun PermissionsScreenPendingPreview() {
 fun PermissionsScreenGrantedPreview() {
     DigitalMonkTheme {
         PermissionsScreenContent(
-            onBackClick = {},
+            onBackClick            = {},
             isAccessibilityGranted = true,
-            isDeviceAdminGranted = true,
-            isUsageStatsGranted = true,
-            isOverlayGranted = true,
-            isBatteryExempt = true,
-            hasNotification = true,
-            visitedAutostart = true,
-            visitedMiuiPower = true,
-            visitedMiuiBgPopup = true,
-            isXiaomiDevice = true,
-            hasOemAutostart = true,
-            onRequestPermission = {},
-            isAlwaysOnVpnGranted = true
+            isDeviceAdminGranted   = true,
+            isUsageStatsGranted    = true,
+            isOverlayGranted       = true,
+            isBatteryExempt        = true,
+            hasNotification        = true,
+            visitedAutostart       = true,
+            visitedMiuiBgPopup     = true,
+            isXiaomiDevice         = true,
+            hasOemAutostart        = true,
+            onRequestPermission    = {},
+            isAlwaysOnVpnGranted   = true
         )
     }
 }

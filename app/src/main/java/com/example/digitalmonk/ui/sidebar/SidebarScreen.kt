@@ -1,7 +1,5 @@
 package com.example.digitalmonk.ui.sidebar
 
-import android.content.Intent
-import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,11 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.digitalmonk.data.local.prefs.PrefsManager
 import com.example.digitalmonk.ui.PermissionsState
-import com.example.digitalmonk.ui.components.cards.PermissionCard
-import com.example.digitalmonk.ui.components.cards.ToggleCard
-import com.example.digitalmonk.ui.components.dialogs.PinGateDialog
-import com.example.digitalmonk.ui.components.dialogs.PreventVpnOverrideDialog
-import com.example.digitalmonk.ui.components.dialogs.VpnKeepAliveDialog
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 private val BgCard      = Color(0xFF111827)
@@ -54,18 +47,9 @@ fun PermissionsSidebar(
     onRefresh: () -> Unit,
     onClose: () -> Unit
 ) {
-    val context = LocalContext.current
-
-    var keepVpnAlive       by remember { mutableStateOf(prefs.isKeepVpnAlive) }
-    var preventVpnOverride by remember { mutableStateOf(prefs.isPreventVpnOverride) }
-
     val vpnSettingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { onRefresh() }
-
-    var showPinDialog     by remember { mutableStateOf(false) }
-    var showKeepAliveInfo by remember { mutableStateOf(false) }
-    var showPreventDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -106,52 +90,9 @@ fun PermissionsSidebar(
             // ── Header ────────────────────────────────────────────────────
             SidebarHeader(onClose = onClose)
 
-            SidebarDivider()
-
-            ToggleCard(
-                emoji = "♻️",
-                title = "Keep VPN alive",
-                subtitle = "Some phones kill VPN willy-nilly. We'll attempt to keep it on for as long as possible.",
-                isEnabled = keepVpnAlive,
-                onToggle = { newValue ->
-                    val prefsCheck = PrefsManager(context)
-                    if (prefsCheck.isSettingsLocked) {
-                        Toast.makeText(
-                            context,
-                            "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@ToggleCard
-                    }
-                    if (newValue) showKeepAliveInfo = true
-                    else {
-                        keepVpnAlive = false
-                        prefs.isKeepVpnAlive = false
-                    }
-                }
-            )
-
-            SidebarDivider()
-
-            ToggleCard(
-                emoji = "🔒",
-                title = "Prevent VPN override",
-                subtitle = "Prevents another VPN from overriding Digital Monk.",
-                isEnabled = preventVpnOverride,
-                onToggle = { newValue ->
-                    val prefsCheck = PrefsManager(context)
-                    if (prefsCheck.isSettingsLocked) {
-                        Toast.makeText(
-                            context,
-                            "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@ToggleCard
-                    }
-                    if (newValue) showPreventDialog = true
-                    else showPinDialog = true
-                }
-            )
+            // NOTE: "Keep VPN alive" and "Prevent VPN override" toggles have
+            // been moved to SecurityScreen. Add SecurityScreen navigation here
+            // if needed (e.g. a shortcut button to open it).
 
             // ── Footer ────────────────────────────────────────────────────
             Spacer(Modifier.height(16.dp))
@@ -184,49 +125,11 @@ fun PermissionsSidebar(
                 Text("ℹ️", fontSize = 14.sp)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Return to the app after granting each permission. Status updates automatically.",
+                    "Return to the app.",
                     fontSize = 11.sp, color = TextSecond, lineHeight = 16.sp
                 )
             }
         }
-    }
-
-    // ── Dialogs ───────────────────────────────────────────────────────────────
-
-    if (showKeepAliveInfo) {
-        VpnKeepAliveDialog(
-            onConfirm = {
-                showKeepAliveInfo = false
-                keepVpnAlive = true
-                prefs.isKeepVpnAlive = true
-            },
-            onDismiss = { showKeepAliveInfo = false }
-        )
-    }
-
-    if (showPreventDialog) {
-        PreventVpnOverrideDialog(
-            onConfirm = {
-                showPreventDialog = false
-                preventVpnOverride = true
-                prefs.isPreventVpnOverride = true
-            },
-            onDismiss = { showPreventDialog = false }
-        )
-    }
-
-    if (showPinDialog) {
-        PinGateDialog(
-            prefs = prefs,
-            title = "Disable VPN Protection",
-            message = "Enter your parent PIN to turn off VPN override protection.",
-            onSuccess = {
-                showPinDialog = false
-                preventVpnOverride = false
-                prefs.isPreventVpnOverride = false
-            },
-            onDismiss = { showPinDialog = false }
-        )
     }
 }
 
@@ -257,12 +160,12 @@ private fun SidebarHeader(onClose: () -> Unit) {
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("🔐", fontSize = 22.sp)
+                    Text("⏸️", fontSize = 22.sp)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("VPN Settings", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("Filter & Protection", fontSize = 11.sp, color = TextSecond, letterSpacing = 0.5.sp)
+                    Text("SideBar", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text("Put quick navigation buttons here.", fontSize = 11.sp, color = TextSecond, letterSpacing = 0.5.sp)
                 }
             }
             IconButton(onClick = onClose) {
@@ -307,7 +210,7 @@ fun formatRemainingTime(ms: Long): String {
 
 @Preview(showBackground = true, backgroundColor = 0xFF080E1A)
 @Composable
-fun PermissionsSidebarPreview() {
+private fun PermissionsSidebarPreview() {
     val context = LocalContext.current
     val dummyPrefs = remember { PrefsManager(context) }
     val mockState = PermissionsState(
