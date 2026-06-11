@@ -124,11 +124,7 @@ public class VpnHeartbeatMonitorWorker extends Worker {
     private void restartVpn(Context context) {
         try {
             Intent intent = new Intent(context, DnsVpnService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent);
-            } else {
-                context.startService(intent);
-            }
+            context.startForegroundService(intent);
             Log.i(TAG, "✅ DnsVpnService restarted by heartbeat watchdog");
         } catch (Exception e) {
             Log.e(TAG, "Failed to restart DnsVpnService from watchdog", e);

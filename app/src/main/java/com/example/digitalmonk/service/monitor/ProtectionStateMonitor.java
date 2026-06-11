@@ -106,8 +106,15 @@ public class ProtectionStateMonitor {
 
         // 4. Battery optimization
         //    We use PersistenceManager here (same as WatchdogService and PermissionHelper)
+        // Battery optimization
         if (!PersistenceManager.isBatteryOptimizationDisabled(context)) {
-            issues.add(ProtectionIssue.BATTERY_OPTIMIZATION_ACTIVE);
+
+            // MIUI bug:
+            // When VPN is active some Xiaomi devices falsely report
+            // battery optimization as enabled.
+            if (!DnsVpnService.isServiceRunning) {
+                issues.add(ProtectionIssue.BATTERY_OPTIMIZATION_ACTIVE);
+            }
         }
     }
 
@@ -193,7 +200,6 @@ public class ProtectionStateMonitor {
                     context.getSystemService(Context.CONNECTIVITY_SERVICE);
             if (cm == null) return false;
 
-            // ✅ Use getActiveNetwork() instead of deprecated getAllNetworks()
             Network activeNetwork = cm.getActiveNetwork();
             if (activeNetwork == null) return false;
 
@@ -214,5 +220,27 @@ public class ProtectionStateMonitor {
             Log.w(TAG, "VPN transport check failed: " + e.getMessage());
         }
         return false;
+    }
+
+    private boolean isAnyVpnActive() {
+        try {
+            ConnectivityManager cm =
+                    (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+
+            if (cm == null) return false;
+
+            Network activeNetwork = cm.getActiveNetwork();
+            if (activeNetwork == null) return false;
+
+            NetworkCapabilities caps =
+                    cm.getNetworkCapabilities(activeNetwork);
+
+            return caps != null &&
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
+
+        } catch (Exception e) {
+            Log.w(TAG, "isAnyVpnActive failed: " + e.getMessage());
+            return false;
+        }
     }
 }
