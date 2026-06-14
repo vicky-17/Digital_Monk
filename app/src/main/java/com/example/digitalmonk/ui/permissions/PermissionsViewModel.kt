@@ -16,6 +16,8 @@ import androidx.core.content.ContextCompat
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import com.example.digitalmonk.receiver.MonkDeviceAdminReceiver
+import com.example.digitalmonk.service.accessibility.AllowlistManager
+import com.example.digitalmonk.core.utils.Constants
 
 // Data class representing the live permission states of the device
 data class PermissionsUiState(
@@ -50,6 +52,7 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
      * and updates the UI state flow atomically.
      */
     fun checkAllPermissions() {
+        AllowlistManager.getInstance().revokeAll()
         viewModelScope.launch {
             val prefs = context.getSharedPreferences("monk_prefs", Context.MODE_PRIVATE)
             _uiState.update { current ->
@@ -93,33 +96,47 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(pendingDeviceAdminIntent = null) }
     }
 
-    /**
-     * Handles routing the user directly to the respective Android System Settings page.
-     *
-     * DEVICE_ADMIN is intentionally excluded here — it is handled via
-     * pendingDeviceAdminIntent so the Activity can launch it with startActivityForResult.
-     */
+
     fun triggerPermissionIntent(permissionType: String) {
+        val allowlist = AllowlistManager.getInstance()
         val prefs = context.getSharedPreferences("monk_prefs", Context.MODE_PRIVATE)
 
         when (permissionType) {
-            "ACCESSIBILITY"        -> PermissionHelper.openAccessibilityServiceScreen(context)
-            "USAGE_STATS"          -> PermissionHelper.openUsageAccessSettings(context)
-            "OVERLAY"              -> PermissionHelper.openOverlaySettings(context)
-            "ALWAYS_ON_VPN"        -> PermissionHelper.openVpnSettings(context)
-            "BATTERY_OPTIMIZATION" -> PermissionHelper.openBatteryOptimizationSettings(context)
-            "NOTIFICATIONS"        -> PermissionHelper.openAppNotificationSettings(context)
-
-            // Device Admin: emit as a one-shot Intent event for the Activity to launch
+            "ACCESSIBILITY" -> {
+                allowlist.allow(Constants.ALLOW_ACCESSIBILITY)
+                PermissionHelper.openAccessibilityServiceScreen(context)
+            }
+            "USAGE_STATS" -> {
+                allowlist.allow(Constants.ALLOW_USAGE_STATS)
+                PermissionHelper.openUsageAccessSettings(context)
+            }
+            "OVERLAY" -> {
+                allowlist.allow(Constants.ALLOW_OVERLAY)
+                PermissionHelper.openOverlaySettings(context)
+            }
+            "ALWAYS_ON_VPN" -> {
+                allowlist.allow(Constants.ALLOW_VPN)
+                PermissionHelper.openVpnSettings(context)
+            }
+            "BATTERY_OPTIMIZATION" -> {
+                allowlist.allow(Constants.ALLOW_BATTERY)
+                PermissionHelper.openBatteryOptimizationSettings(context)
+            }
+            "NOTIFICATIONS" -> {
+                allowlist.allow(Constants.ALLOW_NOTIFICATIONS)
+                PermissionHelper.openAppNotificationSettings(context)
+            }
             "DEVICE_ADMIN" -> {
+                // Device admin is launched via Activity result — no settings page to block
                 _uiState.update { it.copy(pendingDeviceAdminIntent = buildDeviceAdminIntent()) }
             }
-
             "AUTOSTART" -> {
+                allowlist.allow(Constants.ALLOW_AUTOSTART)
                 PermissionHelper.openXiaomiAutoStartSettings(context)
                 checkAllPermissions()
             }
             "MIUI_POPUP" -> {
+                allowlist.allow(Constants.ALLOW_OVERLAY) // MIUI popup shares overlay keyword
                 PermissionHelper.openXiaomiBackgroundPopupSettings(context)
                 checkAllPermissions()
             }

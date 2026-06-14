@@ -4,12 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
+import androidx.annotation.RequiresApi
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -138,10 +140,27 @@ class BlockedPageActivity : ComponentActivity() {
                 ))
                 .putExtra(EXTRA_SETTINGS_ACTION, ACTION_OPEN_BATTERY)
                 .putExtra(EXTRA_FIX_LABEL, "Fix Battery Setting")
+
+        fun alwaysOnVpnNotSet(context: Context): Intent =
+            base(context)
+                .putExtra(EXTRA_EMOJI,    "🛡️")
+                .putExtra(EXTRA_TITLE,    "Always-On VPN Not Set")
+                .putExtra(EXTRA_MESSAGE,  "The VPN filter can be bypassed after a reboot or network change. Lock it down permanently.")
+                .putExtra(EXTRA_SEVERITY, "INFO")
+                .putExtra(EXTRA_STEPS, arrayListOf(
+                    "Tap 'Open VPN Settings' below",
+                    "Find 'Digital Monk Shield'",
+                    "Tap the ⚙️ gear icon next to it",
+                    "Enable 'Always-on VPN'",
+                    "Optional: Enable 'Block connections without VPN'"
+                ))
+                .putExtra(EXTRA_SETTINGS_ACTION, ACTION_OPEN_VPN_SETTINGS)
+                .putExtra(EXTRA_FIX_LABEL, "Open VPN Settings")
     }
 
     private var intentionalExit = false
 
+    @RequiresApi(Build.VERSION_CODES.O_MR1)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

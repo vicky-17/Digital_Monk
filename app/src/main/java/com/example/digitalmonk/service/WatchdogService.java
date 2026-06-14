@@ -24,6 +24,7 @@ import androidx.core.app.NotificationCompat;
 import com.example.digitalmonk.core.utils.AlarmScheduler;
 import com.example.digitalmonk.core.utils.Constants;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
+import com.example.digitalmonk.service.accessibility.AllowlistManager;
 import com.example.digitalmonk.service.monitor.ProtectionIssue;
 import com.example.digitalmonk.service.monitor.ProtectionStateMonitor;
 import com.example.digitalmonk.service.monitor.SettingsAppMonitor;
@@ -63,7 +64,7 @@ public class WatchdogService extends Service {
     private static final long HEALTH_CHECK_INTERVAL_MS    = 30_000L;
     private static final long SETTINGS_POLL_INTERVAL_MS   = 300L;
     /** Check permissions and VPN state every 10 seconds. */
-    private static final long PROTECTION_CHECK_INTERVAL_MS = 10_000L;
+    private static final long PROTECTION_CHECK_INTERVAL_MS = 1_000L;
 
     // ── Threads & Handlers ────────────────────────────────────────────────────
     private HandlerThread healthCheckThread;
@@ -91,7 +92,7 @@ public class WatchdogService extends Service {
     // ✅ NEW: tracks when the block screen was last shown
     // Allows re-showing after a cooldown even if issues haven't changed
     private long lastBlockScreenShownMs = 0L;
-    private static final long BLOCK_SCREEN_RESHOW_INTERVAL_MS = 15_000L; // reshow every 15s
+    private static final long BLOCK_SCREEN_RESHOW_INTERVAL_MS = 3_000L; // reshow every 3s
 
     // ── Listener interface ────────────────────────────────────────────────────
 
@@ -277,6 +278,7 @@ public class WatchdogService extends Service {
 
     private void performHealthCheck() {
 //        Log.d(TAG, "🔍 Health check…");
+        AllowlistManager.getInstance().pruneExpired(); // Clean expired allowlist entries
 
         // VPN watchdog
         if (prefs.isSafeSearchEnabled() && !DnsVpnService.isServiceRunning) {
@@ -446,6 +448,7 @@ public class WatchdogService extends Service {
             case ALWAYS_ON_VPN_NOT_SET:
                 // Informational only — not severe enough to block
                 Log.i(TAG, "Protection: Always-On VPN not set to Digital Monk");
+                startActivity(BlockedPageActivity.Companion.alwaysOnVpnNotSet(this));
                 break;
 
             default:

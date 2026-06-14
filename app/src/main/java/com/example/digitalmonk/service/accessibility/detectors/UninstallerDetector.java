@@ -2,6 +2,8 @@ package com.example.digitalmonk.service.accessibility.detectors;
 
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import com.example.digitalmonk.service.accessibility.AllowlistManager;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -55,11 +57,16 @@ public class UninstallerDetector {
      */
     public static boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName) {
 
-        // Gate 1 — cheapest check first
+        // Gate 1
         if (packageName == null || !SETTINGS_PACKAGES.contains(packageName)) return false;
-
-        // Gate 2
         if (root == null) return false;
+
+        // ── ALLOWLIST CHECK — before any other gate ───────────────────────────
+        // If the parent intentionally opened this settings page, let it through.
+        AllowlistManager allowlist = AllowlistManager.getInstance();
+        if (allowlist.isAnyAllowed(getPageTitleText(root))) {
+            return false; // Parent-initiated navigation — don't block
+        }
 
         // Gate 3 — page title
         if (!hasAnyText(root, DANGEROUS_PAGE_TITLES)) return false;
@@ -67,9 +74,30 @@ public class UninstallerDetector {
         // Gate 4 — our app name must be visible
         if (!hasExactText(root, "Digital Monk")) return false;
 
-        // Gate 5 — confirm we are on the right page via body text
-        // (MIUI hides action buttons from accessibility tree — use visible body text instead)
+        // Gate 5 — confirmation anchor
         return hasAnyText(root, DANGER_CONFIRM_TEXTS);
+    }
+
+    /** Extracts visible title text to check against allowlist keywords. */
+    private static String getPageTitleText(AccessibilityNodeInfo root) {
+        try {
+            // Try common title view IDs first
+            for (String titleId : Arrays.asList(
+                    "com.android.settings:id/action_bar_title",
+                    "android:id/title",
+                    "com.miui.securitycenter:id/title"
+            )) {
+                List<AccessibilityNodeInfo> nodes =
+                        root.findAccessibilityNodeInfosByViewId(titleId);
+                if (nodes != null && !nodes.isEmpty()) {
+                    CharSequence text = nodes.get(0).getText();
+                    if (text != null) return text.toString();
+                }
+            }
+            // Fallback: dump all text from the page
+            if (root.getText() != null) return root.getText().toString();
+        } catch (Exception ignored) {}
+        return "";
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

@@ -60,5 +60,16 @@ public final class Constants {
     public static final int NOTIFICATION_ID_LOCK_TIMER = 1005;
 
 
+    // ── Allowlist page keywords ────────────────────────────────────────────────
+    public static final String ALLOW_ACCESSIBILITY   = "accessibility";
+    public static final String ALLOW_OVERLAY         = "display over other apps";
+    public static final String ALLOW_USAGE_STATS     = "usage access";
+    public static final String ALLOW_BATTERY         = "battery optimization";
+    public static final String ALLOW_DEVICE_ADMIN    = "device admin";
+    public static final String ALLOW_VPN             = "vpn";
+    public static final String ALLOW_NOTIFICATIONS   = "notifications";
+    public static final String ALLOW_AUTOSTART       = "autostart";
+
+
 
 }

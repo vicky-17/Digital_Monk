@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import com.example.digitalmonk.service.accessibility.AllowlistManager;
 import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
 import com.example.digitalmonk.service.accessibility.GuardianRedirectActivity;
@@ -129,6 +130,17 @@ public class SettingsPageReader {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE2 FAIL: root is null");
             return false;
         }
+        // ── ALLOWLIST CHECK ───────────────────────────────────────────────────
+        AllowlistManager allowlist = AllowlistManager.getInstance();
+        // Check against all visible text on the page
+        for (String title : DANGEROUS_TITLES) {
+            if (hasExactText(root, title) && allowlist.isAnyAllowed(title)) {
+                return false;
+            }
+        }
+        // Also check raw page title
+        // (re-use your existing hasAnyText / hasExactText helpers)
+
         if (!hasAnyText(root, DANGEROUS_TITLES)) {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE3 FAIL: no dangerous title found");
             return false;
