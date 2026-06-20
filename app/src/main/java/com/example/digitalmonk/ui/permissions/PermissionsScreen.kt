@@ -34,16 +34,18 @@ fun PermissionsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // ── Device Admin launcher ─────────────────────────────────────────────────
-    // ACTION_ADD_DEVICE_ADMIN must be launched from an Activity context.
-    // We use a result launcher here (inside the Composition, which has Activity context)
-    // and observe the one-shot Intent emitted by the ViewModel.
     val deviceAdminLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
-        // Re-check permissions after the user returns from the system dialog
         viewModel.checkAllPermissions()
         viewModel.onDeviceAdminIntentHandled()
+    }
+
+    val vpnPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        viewModel.onVpnPermissionResult(granted = result.resultCode == android.app.Activity.RESULT_OK)
+        viewModel.onVpnPermissionIntentHandled()
     }
 
     LaunchedEffect(uiState.pendingDeviceAdminIntent) {
@@ -52,7 +54,12 @@ fun PermissionsScreen(
         }
     }
 
-    // Refresh state when the screen becomes active
+    LaunchedEffect(uiState.pendingVpnPermissionIntent) {
+        uiState.pendingVpnPermissionIntent?.let { intent ->
+            vpnPermissionLauncher.launch(intent)
+        }
+    }
+
     DisposableEffect(Unit) {
         viewModel.checkAllPermissions()
         onDispose { }
@@ -64,6 +71,7 @@ fun PermissionsScreen(
         isDeviceAdminGranted   = uiState.isDeviceAdminGranted,
         isUsageStatsGranted    = uiState.isUsageStatsGranted,
         isOverlayGranted       = uiState.isOverlayGranted,
+        isVpnPermissionGranted = uiState.isVpnPermissionGranted,   // NEW
         isAlwaysOnVpnGranted   = uiState.isAlwaysOnVpnGranted,
         isBatteryExempt        = uiState.isBatteryExempt,
         hasNotification        = uiState.hasNotification,
@@ -82,6 +90,7 @@ fun PermissionsScreenContent(
     isAccessibilityGranted: Boolean,
     isDeviceAdminGranted: Boolean,
     isAlwaysOnVpnGranted: Boolean,
+    isVpnPermissionGranted: Boolean,
     isUsageStatsGranted: Boolean,
     isOverlayGranted: Boolean,
     isBatteryExempt: Boolean,
@@ -202,6 +211,16 @@ fun PermissionsScreenContent(
                     icon = Icons.Rounded.AdminPanelSettings,
                     isGranted = isDeviceAdminGranted,
                     onGrantClick = { onRequestPermission("DEVICE_ADMIN") }
+                )
+            }
+
+            item {
+                PermissionCard(
+                    title = "VPN Permission",
+                    description = "Grants Digital Monk permission to run the local content-filter VPN. Required before Always-On VPN can be configured.",
+                    icon = Icons.Rounded.VpnKey,
+                    isGranted = isVpnPermissionGranted,
+                    onGrantClick = { onRequestPermission("VPN_PERMISSION") }
                 )
             }
 
@@ -358,7 +377,8 @@ fun PermissionsScreenPendingPreview() {
             isXiaomiDevice         = true,
             hasOemAutostart        = true,
             onRequestPermission    = {},
-            isAlwaysOnVpnGranted   = false
+            isAlwaysOnVpnGranted   = false,
+            isVpnPermissionGranted = false
         )
     }
 }
@@ -380,7 +400,8 @@ fun PermissionsScreenGrantedPreview() {
             isXiaomiDevice         = true,
             hasOemAutostart        = true,
             onRequestPermission    = {},
-            isAlwaysOnVpnGranted   = true
+            isAlwaysOnVpnGranted   = true,
+            isVpnPermissionGranted = false
         )
     }
 }

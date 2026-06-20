@@ -9,10 +9,13 @@ import android.net.VpnService;
 import android.os.Build;
 import android.provider.Settings;
 import android.util.Log;
+import android.app.KeyguardManager;
+import android.view.WindowManager;
 
 import com.example.digitalmonk.core.utils.PermissionHelper;
 import com.example.digitalmonk.core.utils.PersistenceManager;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
+import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService;
 import com.example.digitalmonk.service.vpn.DnsVpnService;
 
 import java.util.Collections;
@@ -86,6 +89,8 @@ public class ProtectionStateMonitor {
     }
 
     // ── Permission checks ─────────────────────────────────────────────────────
+    private int overlayMissingCount = 0;
+    private static final int OVERLAY_MISSING_THRESHOLD = 30; // 30 × 1s = 30 seconds
 
     private void checkPermissions(Set<ProtectionIssue> issues) {
 
@@ -96,7 +101,12 @@ public class ProtectionStateMonitor {
 
         // 2. Display over other apps
         if (!PermissionHelper.canDrawOverlays(context)) {
-            issues.add(ProtectionIssue.OVERLAY_PERMISSION_MISSING);
+            overlayMissingCount++;
+            if (overlayMissingCount >= OVERLAY_MISSING_THRESHOLD) {
+                issues.add(ProtectionIssue.OVERLAY_PERMISSION_MISSING);
+            }
+        } else {
+            overlayMissingCount = 0; // reset on success
         }
 
         // 3. Usage stats
@@ -243,4 +253,5 @@ public class ProtectionStateMonitor {
             return false;
         }
     }
+
 }

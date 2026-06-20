@@ -64,7 +64,7 @@ public class WatchdogService extends Service {
     private static final long HEALTH_CHECK_INTERVAL_MS    = 30_000L;
     private static final long SETTINGS_POLL_INTERVAL_MS   = 300L;
     /** Check permissions and VPN state every 10 seconds. */
-    private static final long PROTECTION_CHECK_INTERVAL_MS = 1_000L;
+    private static final long PROTECTION_CHECK_INTERVAL_MS = 5_000L;
 
     // ── Threads & Handlers ────────────────────────────────────────────────────
     private HandlerThread healthCheckThread;

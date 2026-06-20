@@ -11,6 +11,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -39,6 +40,8 @@ class BlockedPageActivity : ComponentActivity() {
         const val ACTION_OPEN_BATTERY           = "open_battery"
         const val ACTION_OPEN_VPN_SETTINGS      = "open_vpn_settings"
         const val ACTION_NONE                   = "none"
+
+        const val ACTION_REQUEST_VPN_PERMISSION = "request_vpn_permission"
 
         // ── Private base builder ──────────────────────────────────────────────
         private fun base(context: Context): Intent =
@@ -74,15 +77,15 @@ class BlockedPageActivity : ComponentActivity() {
             base(context)
                 .putExtra(EXTRA_EMOJI,    "🔒")
                 .putExtra(EXTRA_TITLE,    "VPN Permission Revoked")
-                .putExtra(EXTRA_MESSAGE,  "Digital Monk no longer has VPN permission. Ask a parent to re-grant it.")
+                .putExtra(EXTRA_MESSAGE,  "Digital Monk no longer has VPN permission. Tap below to re-grant it.")
                 .putExtra(EXTRA_SEVERITY, "CRITICAL")
                 .putExtra(EXTRA_STEPS, arrayListOf(
-                    "Open Digital Monk",
-                    "Go to Permissions screen",
-                    "Re-grant VPN permission"
+                    "Tap 'Re-grant VPN Permission' below",
+                    "Tap 'OK' on the system dialog",
+                    "Protection resumes instantly"
                 ))
-                .putExtra(EXTRA_SETTINGS_ACTION, ACTION_OPEN_VPN_SETTINGS)
-                .putExtra(EXTRA_FIX_LABEL, "Open VPN Settings")
+                .putExtra(EXTRA_SETTINGS_ACTION, ACTION_REQUEST_VPN_PERMISSION)
+                .putExtra(EXTRA_FIX_LABEL, "Re-grant VPN Permission")
 
         fun accessibilityDisabled(context: Context): Intent =
             base(context)
@@ -145,11 +148,11 @@ class BlockedPageActivity : ComponentActivity() {
             base(context)
                 .putExtra(EXTRA_EMOJI,    "🛡️")
                 .putExtra(EXTRA_TITLE,    "Always-On VPN Not Set")
-                .putExtra(EXTRA_MESSAGE,  "The VPN filter can be bypassed after a reboot or network change. Lock it down permanently.")
+                .putExtra(EXTRA_MESSAGE,  "Always-On VPN isn't set to Digital Monk yet. Without it, a reboot or network change could silently disable the filter.")
                 .putExtra(EXTRA_SEVERITY, "INFO")
                 .putExtra(EXTRA_STEPS, arrayListOf(
                     "Tap 'Open VPN Settings' below",
-                    "Find 'Digital Monk Shield'",
+                    "Find 'Digital Monk' in the list",
                     "Tap the ⚙️ gear icon next to it",
                     "Enable 'Always-on VPN'",
                     "Optional: Enable 'Block connections without VPN'"
@@ -159,6 +162,22 @@ class BlockedPageActivity : ComponentActivity() {
     }
 
     private var intentionalExit = false
+
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ){ result ->
+        if (result.resultCode == RESULT_OK){
+            // Permission re-granted : restart the VPN service
+            val prefs = com.example.digitalmonk.data.local.prefs.PrefsManager(this)
+            if (prefs.isSafeSearchEnabled){
+                startService(Intent(this, com.example.digitalmonk.service.vpn.DnsVpnService::class.java))
+            }
+            intentionalExit = true
+            finish() // Watchdog will stop reshowing once VPN_PERMISSIONS_REVOKED clears
+        }
+        // If denied/cancelled, the gate will simply reappears via the watchdog loop
+
+    }
 
     @RequiresApi(Build.VERSION_CODES.O_MR1)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -194,8 +213,13 @@ class BlockedPageActivity : ComponentActivity() {
         val actions = buildList {
             if (settingsAction != ACTION_NONE) {
                 add(GateAction(fixLabel, isPrimary = true) {
-                    intentionalExit = true
-                    openSettingsPage(settingsAction)
+                    if (settingsAction == ACTION_REQUEST_VPN_PERMISSION){
+                        requestVpnPermission()
+                    }
+                    else{
+                        intentionalExit = true
+                        openSettingsPage(settingsAction)
+                    }
                     // Don't finish — user will come back via back stack
                     // The watchdog will detect the fix and stop reshowing
                 })
@@ -223,6 +247,21 @@ class BlockedPageActivity : ComponentActivity() {
                     actions  = actions
                 )
             }
+        }
+    }
+
+    private fun requestVpnPermission(){
+        val vpnIntent = android.net.VpnService.prepare(this)
+        if(vpnIntent != null){
+            vpnPermissionLauncher.launch(vpnIntent)
+        } else {
+            // Already granted somehow - just restart VPN and close the gate
+            val prefs = com.example.digitalmonk.data.local.prefs.PrefsManager(this)
+            if (prefs.isSafeSearchEnabled){
+                startService(Intent(this, com.example.digitalmonk.service.vpn.DnsVpnService::class.java))
+            }
+            intentionalExit = true
+            finish()
         }
     }
 

@@ -111,6 +111,7 @@ fun DashboardScreen(
                         safeSearchEnabled = true
                         prefs.setSafeSearchEnabled(true)
                         context.startService(Intent(context, DnsVpnService::class.java))
+                        showAlwaysOnDialog = true
                     }
                 } else {
                     safeSearchEnabled = false
