@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import com.example.digitalmonk.data.local.prefs.PrefsManager;
 import com.example.digitalmonk.service.accessibility.AllowlistManager;
 import com.example.digitalmonk.service.accessibility.GuardianAccessibilityService;
 import com.example.digitalmonk.service.overlay.SettingsBlockOverlayService;
@@ -22,6 +23,10 @@ import java.util.Set;
 public class SettingsPageReader {
 
     private static final String TAG = "SettingsPageReader";
+    private final PrefsManager prefs;
+    public SettingsPageReader(PrefsManager prefs) {
+        this.prefs = prefs;
+    }
 
     private static final long ESCAPE_COOLDOWN_MS     = 2_500L;
     private static final long ACCESSIBILITY_GRACE_MS = 5_000L;
@@ -58,6 +63,7 @@ public class SettingsPageReader {
     // ── Public API ────────────────────────────────────────────────────────────
 
     public boolean readAndRespond(Context context, String settingsPkg) {
+        if (!prefs.isAntiUninstallEnabled()) return false;
 //        Log.d("MONK_TRACE", "readAndRespond() called → pkg=" + settingsPkg
 //                + " | escapeInProgress=" + escapeInProgress);
 //

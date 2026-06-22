@@ -4,9 +4,6 @@ import android.accessibilityservice.AccessibilityService;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.List;
 import com.example.digitalmonk.core.utils.UiDumper;
 import com.example.digitalmonk.data.local.prefs.PrefsManager;
@@ -102,6 +99,7 @@ public class GuardianAccessibilityService extends AccessibilityService {
 
     private boolean findAndPerformBack(AccessibilityNodeInfo root) {
         if (root == null) return false;
+        if (!prefs.isAntiUninstallEnabled()) return false;
 
         if (!hasText(root, "Digital Monk"))
             return false;

@@ -208,7 +208,7 @@ public class WatchdogService extends Service {
             }
         });
 
-        settingsPageReader  = new SettingsPageReader();
+        settingsPageReader  = new SettingsPageReader(prefs);
         protectionMonitor   = new ProtectionStateMonitor(this);  // NEW
     }
 

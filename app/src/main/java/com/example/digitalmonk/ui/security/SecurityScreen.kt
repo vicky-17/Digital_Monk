@@ -4,11 +4,9 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -25,9 +23,7 @@ import com.example.digitalmonk.ui.components.dialogs.VpnKeepAliveDialog
 import com.example.digitalmonk.ui.sidebar.formatRemainingTime
 
 // ── Color palette ─────────────────────────────────────────────────────────────
-private val ScreenBg    = Color(0xFF080E1A)
-private val CardBg      = Color(0xFF111827)
-private val AccentBlue  = Color(0xFF3B82F6)
+private val ScreenBg   = Color(0xFF080E1A)
 private val TextPrimary = Color(0xFFF1F5F9)
 private val TextSecond  = Color(0xFF64748B)
 private val DividerCol  = Color(0xFF1E293B)
@@ -41,12 +37,15 @@ fun SecurityScreen(prefs: PrefsManager) {
     val context = LocalContext.current
 
     // ── State ─────────────────────────────────────────────────────────────────
-    var keepVpnAlive       by remember { mutableStateOf(prefs.isKeepVpnAlive) }
-    var preventVpnOverride by remember { mutableStateOf(prefs.isPreventVpnOverride) }
+    var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
+    var preventVpnOverride      by remember { mutableStateOf(prefs.isPreventVpnOverride) }
+    var antiUninstallEnabled    by remember { mutableStateOf(prefs.isAntiUninstallEnabled) }
 
-    var showKeepAliveInfo  by remember { mutableStateOf(false) }
-    var showPreventDialog  by remember { mutableStateOf(false) }
-    var showPinDialog      by remember { mutableStateOf(false) }
+    // ── Dialog visibility ─────────────────────────────────────────────────────
+    var showKeepAliveInfoDialog     by remember { mutableStateOf(false) }
+    var showPreventVpnDialog        by remember { mutableStateOf(false) }
+    var showDisableVpnPinDialog     by remember { mutableStateOf(false) }
+    var showAntiUninstallPinDialog  by remember { mutableStateOf(false) }
 
     // ── UI ────────────────────────────────────────────────────────────────────
     Column(
@@ -59,12 +58,13 @@ fun SecurityScreen(prefs: PrefsManager) {
 
         Spacer(Modifier.height(8.dp))
 
+        // ── VPN Protection section ────────────────────────────────────────────
         SectionLabel("VPN PROTECTION")
 
         ToggleCard(
-            emoji = "♻️",
-            title = "Keep VPN alive",
-            subtitle = "Some phones kill VPN willy-nilly. We'll attempt to keep it on for as long as possible.",
+            emoji    = "♻️",
+            title    = "Keep VPN Alive",
+            subtitle = "Some phones kill VPN unexpectedly. We'll attempt to keep it on for as long as possible.",
             isEnabled = keepVpnAlive,
             onToggle = { newValue ->
                 val prefsCheck = PrefsManager(context)
@@ -76,8 +76,9 @@ fun SecurityScreen(prefs: PrefsManager) {
                     ).show()
                     return@ToggleCard
                 }
-                if (newValue) showKeepAliveInfo = true
-                else {
+                if (newValue) {
+                    showKeepAliveInfoDialog = true
+                } else {
                     keepVpnAlive = false
                     prefs.isKeepVpnAlive = false
                 }
@@ -85,15 +86,15 @@ fun SecurityScreen(prefs: PrefsManager) {
         )
 
         HorizontalDivider(
-            color = DividerCol,
+            color     = DividerCol,
             thickness = 0.5.dp,
-            modifier = Modifier.padding(horizontal = 20.dp)
+            modifier  = Modifier.padding(horizontal = 20.dp)
         )
 
         ToggleCard(
-            emoji = "🔒",
-            title = "Prevent VPN override",
-            subtitle = "Prevents another VPN from overriding Digital Monk.",
+            emoji    = "🔒",
+            title    = "Prevent VPN Override",
+            subtitle = "Prevents another VPN app from overriding Digital Monk's filter.",
             isEnabled = preventVpnOverride,
             onToggle = { newValue ->
                 val prefsCheck = PrefsManager(context)
@@ -105,49 +106,98 @@ fun SecurityScreen(prefs: PrefsManager) {
                     ).show()
                     return@ToggleCard
                 }
-                if (newValue) showPreventDialog = true
-                else showPinDialog = true
+                if (newValue) {
+                    showPreventVpnDialog = true
+                } else {
+                    // Disabling is the dangerous direction — require PIN
+                    showDisableVpnPinDialog = true
+                }
             }
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(24.dp))
+
+        // ── Anti-Uninstall section ────────────────────────────────────────────
+        SectionLabel("ANTI-UNINSTALL")
+
+        ToggleCard(
+            emoji    = "🛡️",
+            title    = "Prevent Settings Tampering",
+            subtitle = "Blocks access to Force Stop, Uninstall, and Device Admin pages for Digital Monk.",
+            isEnabled = antiUninstallEnabled,
+            onToggle = { newValue ->
+                val prefsCheck = PrefsManager(context)
+                if (prefsCheck.isSettingsLocked) {
+                    Toast.makeText(
+                        context,
+                        "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@ToggleCard
+                }
+                if (newValue) {
+                    // Turning ON is always safe — no PIN required
+                    antiUninstallEnabled = true
+                    prefs.isAntiUninstallEnabled = true
+                } else {
+                    // Turning OFF is dangerous — require PIN
+                    showAntiUninstallPinDialog = true
+                }
+            }
+        )
+
+        Spacer(Modifier.height(40.dp))
     }
 
     // ── Dialogs ───────────────────────────────────────────────────────────────
 
-    if (showKeepAliveInfo) {
+    if (showKeepAliveInfoDialog) {
         VpnKeepAliveDialog(
             onConfirm = {
-                showKeepAliveInfo = false
+                showKeepAliveInfoDialog = false
                 keepVpnAlive = true
                 prefs.isKeepVpnAlive = true
             },
-            onDismiss = { showKeepAliveInfo = false }
+            onDismiss = { showKeepAliveInfoDialog = false }
         )
     }
 
-    if (showPreventDialog) {
+    if (showPreventVpnDialog) {
         PreventVpnOverrideDialog(
             onConfirm = {
-                showPreventDialog = false
+                showPreventVpnDialog = false
                 preventVpnOverride = true
                 prefs.isPreventVpnOverride = true
             },
-            onDismiss = { showPreventDialog = false }
+            onDismiss = { showPreventVpnDialog = false }
         )
     }
 
-    if (showPinDialog) {
+    if (showDisableVpnPinDialog) {
         PinGateDialog(
-            prefs = prefs,
-            title = "Disable VPN Protection",
-            message = "Enter your parent PIN to turn off VPN override protection.",
+            prefs   = prefs,
+            title   = "Disable VPN Override Protection",
+            message = "Enter your parent PIN to allow other VPN apps to override Digital Monk.",
             onSuccess = {
-                showPinDialog = false
+                showDisableVpnPinDialog = false
                 preventVpnOverride = false
                 prefs.isPreventVpnOverride = false
             },
-            onDismiss = { showPinDialog = false }
+            onDismiss = { showDisableVpnPinDialog = false }
+        )
+    }
+
+    if (showAntiUninstallPinDialog) {
+        PinGateDialog(
+            prefs   = prefs,
+            title   = "Disable Anti-Uninstall Protection",
+            message = "Turning this off allows access to Force Stop, Uninstall, and Device Admin pages for Digital Monk. Enter your PIN to confirm.",
+            onSuccess = {
+                showAntiUninstallPinDialog = false
+                antiUninstallEnabled = false
+                prefs.isAntiUninstallEnabled = false
+            },
+            onDismiss = { showAntiUninstallPinDialog = false }
         )
     }
 }
@@ -161,15 +211,13 @@ private fun SecurityScreenHeader() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(listOf(Color(0xFF0F2A4A), ScreenBg))
-            )
+            .background(Brush.verticalGradient(listOf(Color(0xFF0F2A4A), ScreenBg)))
             .padding(start = 20.dp, end = 20.dp, top = 52.dp, bottom = 24.dp)
     ) {
         Column {
             Text("🛡️ Security", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(Modifier.height(4.dp))
-            Text("Manage VPN protection settings", fontSize = 13.sp, color = TextSecond)
+            Text("Manage protection and VPN settings", fontSize = 13.sp, color = TextSecond)
         }
     }
 }
@@ -177,29 +225,27 @@ private fun SecurityScreenHeader() {
 @Composable
 private fun SectionLabel(label: String) {
     Text(
-        label,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        color = Color(0xFF334155),
+        text          = label,
+        fontSize      = 10.sp,
+        fontWeight    = FontWeight.Bold,
+        color         = Color(0xFF334155),
         letterSpacing = 1.5.sp,
-        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp)
+        modifier      = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp)
     )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Preview
+// Previews — stateless, no PrefsManager/Context needed
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * SecurityScreen takes PrefsManager (needs Context) — same blocker as PinDialog.
- * We preview the static layout using SecurityScreenContent, passing nullable prefs.
- */
 @Composable
 private fun SecurityScreenContent(
-    keepVpnAlive: Boolean,
-    preventVpnOverride: Boolean,
-    onKeepVpnToggle: (Boolean) -> Unit,
-    onPreventToggle: (Boolean) -> Unit
+    keepVpnAlive:         Boolean,
+    preventVpnOverride:   Boolean,
+    antiUninstallEnabled: Boolean,
+    onKeepVpnToggle:      (Boolean) -> Unit,
+    onPreventToggle:      (Boolean) -> Unit,
+    onAntiUninstallToggle:(Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -207,59 +253,70 @@ private fun SecurityScreenContent(
             .background(ScreenBg)
     ) {
         SecurityScreenHeader()
-
         Spacer(Modifier.height(8.dp))
 
         SectionLabel("VPN PROTECTION")
-
         ToggleCard(
-            emoji = "♻️",
-            title = "Keep VPN alive",
-            subtitle = "Some phones kill VPN willy-nilly. We'll attempt to keep it on for as long as possible.",
+            emoji    = "♻️",
+            title    = "Keep VPN Alive",
+            subtitle = "Some phones kill VPN unexpectedly. We'll attempt to keep it on for as long as possible.",
             isEnabled = keepVpnAlive,
-            onToggle = onKeepVpnToggle
+            onToggle  = onKeepVpnToggle
         )
-
         HorizontalDivider(
-            color = DividerCol,
+            color     = DividerCol,
             thickness = 0.5.dp,
-            modifier = Modifier.padding(horizontal = 20.dp)
+            modifier  = Modifier.padding(horizontal = 20.dp)
         )
-
         ToggleCard(
-            emoji = "🔒",
-            title = "Prevent VPN override",
-            subtitle = "Prevents another VPN from overriding Digital Monk.",
+            emoji    = "🔒",
+            title    = "Prevent VPN Override",
+            subtitle = "Prevents another VPN app from overriding Digital Monk's filter.",
             isEnabled = preventVpnOverride,
-            onToggle = onPreventToggle
+            onToggle  = onPreventToggle
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(24.dp))
+
+        SectionLabel("ANTI-UNINSTALL")
+        ToggleCard(
+            emoji    = "🛡️",
+            title    = "Prevent Settings Tampering",
+            subtitle = "Blocks access to Force Stop, Uninstall, and Device Admin pages for Digital Monk.",
+            isEnabled = antiUninstallEnabled,
+            onToggle  = onAntiUninstallToggle
+        )
+
+        Spacer(Modifier.height(40.dp))
     }
 }
 
-@Preview(name = "Security Screen — Both Off", showBackground = true, backgroundColor = 0xFF080E1A)
+@Preview(name = "Security — All Off", showBackground = true, backgroundColor = 0xFF080E1A)
 @Composable
-private fun SecurityScreenPreviewOff() {
+private fun SecurityScreenPreviewAllOff() {
     MaterialTheme {
         SecurityScreenContent(
-            keepVpnAlive = false,
-            preventVpnOverride = false,
-            onKeepVpnToggle = {},
-            onPreventToggle = {}
+            keepVpnAlive          = false,
+            preventVpnOverride    = false,
+            antiUninstallEnabled  = false,
+            onKeepVpnToggle       = {},
+            onPreventToggle       = {},
+            onAntiUninstallToggle = {}
         )
     }
 }
 
-@Preview(name = "Security Screen — Both On", showBackground = true, backgroundColor = 0xFF080E1A)
+@Preview(name = "Security — All On", showBackground = true, backgroundColor = 0xFF080E1A)
 @Composable
-private fun SecurityScreenPreviewOn() {
+private fun SecurityScreenPreviewAllOn() {
     MaterialTheme {
         SecurityScreenContent(
-            keepVpnAlive = true,
-            preventVpnOverride = true,
-            onKeepVpnToggle = {},
-            onPreventToggle = {}
+            keepVpnAlive          = true,
+            preventVpnOverride    = true,
+            antiUninstallEnabled  = true,
+            onKeepVpnToggle       = {},
+            onPreventToggle       = {},
+            onAntiUninstallToggle = {}
         )
     }
 }

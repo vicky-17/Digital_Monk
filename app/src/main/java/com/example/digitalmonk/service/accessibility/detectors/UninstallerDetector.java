@@ -55,7 +55,9 @@ public class UninstallerDetector {
      *   5. A confirmation anchor text is present
      *      (buttons are hidden on MIUI — we use body text instead)
      */
-    public static boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName) {
+    public static boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName, boolean antiUninstallEnabled) {
+
+        if (!antiUninstallEnabled) return false;
 
         // Gate 1
         if (packageName == null || !SETTINGS_PACKAGES.contains(packageName)) return false;

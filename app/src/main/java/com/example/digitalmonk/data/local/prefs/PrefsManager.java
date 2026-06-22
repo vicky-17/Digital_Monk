@@ -52,7 +52,7 @@ public class PrefsManager {
     private static final String KEY_LOCK_ANCHOR_ELAPSED    = "lock_anchor_elapsed";
     private static final String KEY_LOCK_NTP_OFFSET        = "lock_ntp_offset";
     private static final String KEY_LAST_KNOWN_DEVICE_TIME = "last_known_device_time";
-
+    private static final String KEY_ANTI_UNINSTALL_ENABLED = "anti_uninstall_enabled";
 
 
 
@@ -253,6 +253,18 @@ public class PrefsManager {
     public long getLockUntil() {
         return prefs.getLong(KEY_LOCK_UNTIL_TIMESTAMP, 0L);
     }
+
+
+
+
+    public boolean isAntiUninstallEnabled() {
+        return prefs.getBoolean(KEY_ANTI_UNINSTALL_ENABLED, false);
+    }
+
+    public void setAntiUninstallEnabled(boolean value) {
+        prefs.edit().putBoolean(KEY_ANTI_UNINSTALL_ENABLED, value).apply();
+    }
+
 
 
 
