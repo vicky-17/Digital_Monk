@@ -2,12 +2,16 @@ package com.digitalmonk.app.ui.security
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -36,10 +40,18 @@ private val DividerCol  = Color(0xFF1E293B)
 @Composable
 fun SecurityScreen(prefs: PrefsManager) {
     val context = LocalContext.current
-    val viewModel = remember { SecurityViewModel(prefs) }
+    val viewModel = remember { SecurityViewModel(prefs, context) }
 
     val isPermissionBlockEnabled by viewModel.isPermissionBlockEnabled.collectAsState()
     val showConfirmDialog by viewModel.showConfirmDialog.collectAsState()
+
+    // ── Private DNS States (Moved to top so they are available globally in this scope) ──
+    val isDeviceOwner = viewModel.isDeviceOwner
+    val isPrivateDnsEnabled by viewModel.isPrivateDnsEnabled.collectAsState()
+    val selectedHostname by viewModel.selectedHostname.collectAsState()
+    val hostnameList by viewModel.hostnameList.collectAsState()
+    val showAddDialog by viewModel.showAddHostnameDialog.collectAsState()
+    val newHostnameInput by viewModel.newHostnameInput.collectAsState()
 
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
@@ -165,9 +177,141 @@ fun SecurityScreen(prefs: PrefsManager) {
             }
         )
 
-        Spacer(Modifier.height(40.dp))
-    }
+        Spacer(Modifier.height(24.dp))
 
+        SectionLabel("PRIVATE DNS CONFIGURATION")
+
+        val isDeviceOwner = viewModel.isDeviceOwner
+        val isPrivateDnsEnabled by viewModel.isPrivateDnsEnabled.collectAsState()
+        val selectedHostname by viewModel.selectedHostname.collectAsState()
+        val hostnameList by viewModel.hostnameList.collectAsState()
+        val showAddDialog by viewModel.showAddHostnameDialog.collectAsState()
+        val newHostnameInput by viewModel.newHostnameInput.collectAsState()
+
+        // Container card with conditional fade if not device owner
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .alpha(if (isDeviceOwner) 1f else 0.38f)
+        ) {
+            Column {
+                ToggleCard(
+                    emoji = "🌐",
+                    title = "Enable Private DNS",
+                    subtitle = "Route device DNS traffic through a secure custom hostname provider.",
+                    isEnabled = isPrivateDnsEnabled && isDeviceOwner,
+                    onToggle = { newValue ->
+                        if (!isDeviceOwner) {
+                            Toast.makeText(context, "App must be Device Owner to change Private DNS settings.", Toast.LENGTH_LONG).show()
+                            return@ToggleCard
+                        }
+                        viewModel.togglePrivateDns(newValue)
+                    }
+                )
+
+                if (!isDeviceOwner) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "🔒 Requires Device Owner permission to configure Private DNS.",
+                        fontSize = 11.sp,
+                        color = Color(0xFFEF4444),
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Hostname Selection Box UI
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111827)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Select DNS Hostname Provider",
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFF1F5F9),
+                            fontSize = 14.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        // List of hostnames
+                        hostnameList.forEach { hostname ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = isDeviceOwner) {
+                                        viewModel.selectHostname(hostname)
+                                    }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = (selectedHostname == hostname),
+                                    onClick = {
+                                        if (isDeviceOwner) viewModel.selectHostname(hostname)
+                                    },
+                                    enabled = isDeviceOwner
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = hostname,
+                                    color = Color(0xFFCBD5E1),
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        // Button to add new hostname
+                        OutlinedButton(
+                            onClick = { viewModel.onAddHostnameClicked() },
+                            enabled = isDeviceOwner,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("+ Add Custom Hostname")
+                        }
+                    }
+                }
+            }
+        }
+
+
+        Spacer(Modifier.height(40.dp))
+
+
+    }
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAddHostnameDialog() },
+            title = { Text("Add Custom Hostname") },
+            text = {
+                Column {
+                    Text("Enter a valid DNS hostname (e.g., security.cloudflare-dns.com):", fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newHostnameInput,
+                        onValueChange = { viewModel.updateNewHostnameInput(it) },
+                        singleLine = true,
+                        placeholder = { Text("hostname.com") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.saveNewHostname() }) {
+                    Text("Add & Set")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissAddHostnameDialog() }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
     // ── Dialogs ───────────────────────────────────────────────────────────────
     if (showConfirmDialog) {
         ConfirmDialog(

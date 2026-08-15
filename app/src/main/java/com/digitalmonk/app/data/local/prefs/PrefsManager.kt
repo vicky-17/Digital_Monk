@@ -265,6 +265,34 @@ class PrefsManager(context: Context) {
         }
     }
 
+    var isPrivateDnsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PRIVATE_DNS_ENABLED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_PRIVATE_DNS_ENABLED, value).apply()
+        }
+
+    var selectedPrivateDnsHostname: String
+        get() = prefs.getString(KEY_SELECTED_PRIVATE_DNS, "dns.adguard.com") ?: "dns.adguard.com"
+        set(value) {
+            prefs.edit().putString(KEY_SELECTED_PRIVATE_DNS, value).apply()
+        }
+
+    // Replace your existing customPrivateDnsHostnames property with this:
+    var customPrivateDnsHostnames: MutableSet<String>
+        get() {
+            val defaultDns = setOf(
+                "dns.adguard.com",          // AdGuard
+                "dns.quad9.net",            // Quad9
+                "cloudflare-dns.com",       // Cloudflare
+                "doh.cleanbrowsing.org",    // CleanBrowsing (Family Filter)
+                "family-filter-dns.com"     // CleanBrowsing (Family)
+            )
+            return prefs.getStringSet(KEY_CUSTOM_DNS_LIST, defaultDns) ?: defaultDns.toMutableSet()
+        }
+        set(value) {
+            prefs.edit().putStringSet(KEY_CUSTOM_DNS_LIST, value).apply()
+        }
+
 
     companion object {
         // ── Keys ──────────────────────────────────────────────────────────────────
@@ -293,7 +321,10 @@ class PrefsManager(context: Context) {
         private const val KEY_LAST_KNOWN_DEVICE_TIME = "last_known_device_time"
         private const val KEY_ANTI_UNINSTALL_ENABLED = "anti_uninstall_enabled"
 
-
         private const val KEY_PERMISSION_BLOCK_ENABLED = "permission_block_enabled"
+
+        private const val KEY_PRIVATE_DNS_ENABLED = "private_dns_enabled"
+        private const val KEY_SELECTED_PRIVATE_DNS = "selected_private_dns"
+        private const val KEY_CUSTOM_DNS_LIST = "custom_dns_list"
     }
 }
