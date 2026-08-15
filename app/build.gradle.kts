@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.digitalmonk"
+    namespace = "com.digitalmonk.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.digitalmonk"
+        applicationId = "com.digitalmonk.app"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
