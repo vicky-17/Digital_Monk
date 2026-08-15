@@ -57,4 +57,33 @@ object DevicePolicyHelper {
             false
         }
     }
+
+    /**
+     * Locks or unlocks the system's Private DNS setting from being touched by the
+     * user in Settings, using the DISALLOW_CONFIG_PRIVATE_DNS user restriction.
+     * Requires Device Owner status.
+     */
+    fun setPrivateDnsUserRestriction(context: Context, restrict: Boolean): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        val adminComponent = ComponentName(context, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
+
+        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
+            Log.w(TAG, "Cannot set Private DNS restriction: App is not Device Owner")
+            return false
+        }
+
+        return try {
+            if (restrict) {
+                dpm.addUserRestriction(adminComponent, android.os.UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+                Log.i(TAG, "Private DNS settings locked from user")
+            } else {
+                dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+                Log.i(TAG, "Private DNS settings unlocked for user")
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set Private DNS user restriction: ${e.message}")
+            false
+        }
+    }
 }

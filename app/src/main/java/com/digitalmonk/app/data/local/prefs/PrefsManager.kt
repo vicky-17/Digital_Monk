@@ -277,24 +277,41 @@ class PrefsManager(context: Context) {
             prefs.edit().putString(KEY_SELECTED_PRIVATE_DNS, value).apply()
         }
 
-    // Replace your existing customPrivateDnsHostnames property with this:
+    val DEFAULT_PRIVATE_DNS_HOSTS = setOf(
+        "family-filter-dns.cleanbrowsing.org",
+        "family.cloudflare-dns.com",
+        "adult-filter-dns.cleanbrowsing.org",
+        "dns.adguard.com",          // AdGuard
+        "dns.quad9.net",            // Quad9
+        "cloudflare-dns.com",       // Cloudflare
+        "doh.cleanbrowsing.org",    // CleanBrowsing (Family Filter)
+        "family-filter-dns.com"     // CleanBrowsing (Family)
+    )
     var customPrivateDnsHostnames: MutableSet<String>
         get() {
-            val defaultDns = setOf(
-                "family-filter-dns.cleanbrowsing.org",
-                "family.cloudflare-dns.com",
-                "adult-filter-dns.cleanbrowsing.org",
-                "dns.adguard.com",          // AdGuard
-                "dns.quad9.net",            // Quad9
-                "cloudflare-dns.com",       // Cloudflare
-                "doh.cleanbrowsing.org",    // CleanBrowsing (Family Filter)
-                "family-filter-dns.com"     // CleanBrowsing (Family)
-            )
-            return prefs.getStringSet(KEY_CUSTOM_DNS_LIST, defaultDns) ?: defaultDns.toMutableSet()
+            return prefs.getStringSet(KEY_CUSTOM_DNS_LIST, DEFAULT_PRIVATE_DNS_HOSTS)
+                ?: DEFAULT_PRIVATE_DNS_HOSTS.toMutableSet()
         }
         set(value) {
             prefs.edit().putStringSet(KEY_CUSTOM_DNS_LIST, value).apply()
         }
+
+    /** True if this hostname is one of the built-in defaults (can never be deleted). */
+    fun isDefaultPrivateDnsHost(hostname: String): Boolean =
+        DEFAULT_PRIVATE_DNS_HOSTS.contains(hostname)
+
+    /**
+     * Removes a user-added custom DNS hostname from the list.
+     * Silently no-ops if the hostname is one of the built-in defaults —
+     * defaults can never be deleted this way.
+     */
+    fun removeCustomPrivateDnsHostname(hostname: String) {
+        if (isDefaultPrivateDnsHost(hostname)) return
+        val current = customPrivateDnsHostnames.toMutableSet()
+        if (current.remove(hostname)) {
+            customPrivateDnsHostnames = current
+        }
+    }
 
 
     companion object {

@@ -80,6 +80,8 @@ class SecurityViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _isApplyingPrivateDns.value = true
             DevicePolicyHelper.applyPrivateDns(context, false, "")
+            // Unlock system Settings again since Private DNS is now parent-disabled from within the app
+            DevicePolicyHelper.setPrivateDnsUserRestriction(context, false)
             _isApplyingPrivateDns.value = false
         }
     }
@@ -99,8 +101,9 @@ class SecurityViewModel(
                 prefsManager.selectedPrivateDnsHostname = hostname
                 _isPrivateDnsEnabled.value = true
                 _selectedHostname.value = hostname
+                // Lock the system Settings so the user can't turn this off outside the app
+                DevicePolicyHelper.setPrivateDnsUserRestriction(context, true)
             } else {
-                // Toggle never actually turned on — nothing to revert, just report it
                 _privateDnsError.value =
                     "Could not enable Private DNS using \"$hostname\". " +
                             "This host doesn't support DNS-over-TLS, or the connection check failed. " +
@@ -108,6 +111,15 @@ class SecurityViewModel(
             }
         }
     }
+
+    fun deleteHostname(hostname: String) {
+        if (prefsManager.isDefaultPrivateDnsHost(hostname)) return
+        prefsManager.removeCustomPrivateDnsHostname(hostname)
+        _hostnameList.value = prefsManager.customPrivateDnsHostnames.toSet()
+    }
+
+    fun isDefaultHostname(hostname: String): Boolean =
+        prefsManager.isDefaultPrivateDnsHost(hostname)
 
     /** User dismissed the enable dialog without picking a host — toggle stays off. */
     fun dismissEnableHostnameDialog() {

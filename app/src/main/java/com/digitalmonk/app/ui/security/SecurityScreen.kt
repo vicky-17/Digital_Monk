@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -267,7 +268,24 @@ fun SecurityScreen(prefs: PrefsManager) {
                                     onClick = { tempSelection = hostname }
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Text(hostname, fontSize = 14.sp)
+                                Text(hostname, fontSize = 14.sp, modifier = Modifier.weight(1f))
+
+                                if (!viewModel.isDefaultHostname(hostname)) {
+                                    IconButton(
+                                        onClick = {
+                                            if (tempSelection == hostname) tempSelection = null
+                                            viewModel.deleteHostname(hostname)
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = androidx.compose.material.icons.Icons.Rounded.Delete,
+                                            contentDescription = "Remove $hostname",
+                                            tint = Color(0xFFEF4444),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
 
