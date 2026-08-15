@@ -284,7 +284,6 @@ class PrefsManager(context: Context) {
                 "family-filter-dns.cleanbrowsing.org",
                 "family.cloudflare-dns.com",
                 "adult-filter-dns.cleanbrowsing.org",
-
                 "dns.adguard.com",          // AdGuard
                 "dns.quad9.net",            // Quad9
                 "cloudflare-dns.com",       // Cloudflare

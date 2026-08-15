@@ -11,30 +11,15 @@ import com.digitalmonk.app.data.local.prefs.PrefsManager
 import com.digitalmonk.app.service.WatchdogService
 import com.digitalmonk.app.service.vpn.DnsVpnService
 
-/**
- * Why we made this file:
- * When an Android device reboots, standard background and foreground services
- * do NOT automatically restart. For a parental control app, a child rebooting
- * the phone is a common tactic used to try and bypass restrictions.
- * 
- * This BroadcastReceiver listens for the system's "BOOT_COMPLETED" broadcast
- * and immediately turns the Watchdog and VPN services back on, ensuring
- * the protection remains active without the parent needing to open the app.
- * 
- * What the file name defines:
- * "Boot" refers to the device startup process.
- * "Receiver" identifies the Android component (BroadcastReceiver).
- */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        // Safe check for null intent and action in Java
         if (intent == null) return
+        val action = intent.getAction() ?: return
 
-        val action = intent.getAction()
-        if (action == null) return
-
-        // Using .equals() for safe string comparison to prevent NullPointerExceptions
-        if ((Intent.ACTION_BOOT_COMPLETED != action) && (Intent.ACTION_LOCKED_BOOT_COMPLETED != action) && ("android.intent.action.QUICKBOOT_POWERON" != action) && ("com.htc.intent.action.QUICKBOOT_POWERON" != action) // HTC variant
+        if ((Intent.ACTION_BOOT_COMPLETED != action) &&
+            (Intent.ACTION_LOCKED_BOOT_COMPLETED != action) &&
+            ("android.intent.action.QUICKBOOT_POWERON" != action) &&
+            ("com.htc.intent.action.QUICKBOOT_POWERON" != action)
         ) {
             return
         }
@@ -42,9 +27,7 @@ class BootReceiver : BroadcastReceiver() {
         Log.i(TAG, "Boot completed — starting Digital Monk services")
 
         val prefs = PrefsManager(context)
-        if (prefs.isPrivateDnsEnabled) {
-            DevicePolicyHelper.applyPrivateDns(context, true, prefs.selectedPrivateDnsHostname)
-        }
+
         // Only start services if the app was set up (has a PIN)
         if (!prefs.hasPin()) {
             Log.i(TAG, "App not set up yet — skipping service start")
@@ -53,7 +36,6 @@ class BootReceiver : BroadcastReceiver() {
 
         // 1. Always start WatchdogService — it's the root guardian
         WatchdogService.start(context)
-
         AlarmScheduler.scheduleRepeating(context)
 
         // 2. Restart VPN if it was active before reboot
@@ -74,6 +56,26 @@ class BootReceiver : BroadcastReceiver() {
 
         // 3. Re-schedule the JobScheduler backup
         WatchdogService.scheduleJobBackup(context)
+
+        // 4. Re-apply Private DNS — this does a blocking connectivity check,
+        //    so it MUST run off the main thread via goAsync().
+        if (prefs.isPrivateDnsEnabled) {
+            val pendingResult = goAsync()
+            Thread {
+                try {
+                    val success = DevicePolicyHelper.applyPrivateDns(
+                        context,
+                        true,
+                        prefs.selectedPrivateDnsHostname
+                    )
+                    if (!success) {
+                        Log.w(TAG, "Private DNS re-apply on boot failed for host: ${prefs.selectedPrivateDnsHostname}")
+                    }
+                } finally {
+                    pendingResult.finish()
+                }
+            }.start()
+        }
 
         Log.i(TAG, "✅ All services started after boot")
     }

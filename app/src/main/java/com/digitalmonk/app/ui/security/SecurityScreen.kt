@@ -26,6 +26,8 @@ import com.digitalmonk.app.ui.components.dialogs.PinGateDialog
 import com.digitalmonk.app.ui.components.dialogs.PreventVpnOverrideDialog
 import com.digitalmonk.app.ui.components.dialogs.VpnKeepAliveDialog
 import com.digitalmonk.app.ui.sidebar.formatRemainingTime
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 private val ScreenBg   = Color(0xFF080E1A)
@@ -52,6 +54,9 @@ fun SecurityScreen(prefs: PrefsManager) {
     val hostnameList by viewModel.hostnameList.collectAsState()
     val showAddDialog by viewModel.showAddHostnameDialog.collectAsState()
     val newHostnameInput by viewModel.newHostnameInput.collectAsState()
+    val showEnableHostnameDialog by viewModel.showEnableHostnameDialog.collectAsState()
+    val isApplyingPrivateDns by viewModel.isApplyingPrivateDns.collectAsState()
+    val privateDnsError by viewModel.privateDnsError.collectAsState()
 
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
@@ -181,13 +186,12 @@ fun SecurityScreen(prefs: PrefsManager) {
 
         SectionLabel("PRIVATE DNS CONFIGURATION")
 
-        val isDeviceOwner = viewModel.isDeviceOwner
-        val isPrivateDnsEnabled by viewModel.isPrivateDnsEnabled.collectAsState()
-        val selectedHostname by viewModel.selectedHostname.collectAsState()
-        val hostnameList by viewModel.hostnameList.collectAsState()
-        val showAddDialog by viewModel.showAddHostnameDialog.collectAsState()
-        val newHostnameInput by viewModel.newHostnameInput.collectAsState()
-
+        LaunchedEffect(privateDnsError) {
+            privateDnsError?.let { message ->
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                viewModel.clearPrivateDnsError()
+            }
+        }
         // Container card with conditional fade if not device owner
         Box(
             modifier = Modifier
@@ -206,7 +210,7 @@ fun SecurityScreen(prefs: PrefsManager) {
                             Toast.makeText(context, "App must be Device Owner to change Private DNS settings.", Toast.LENGTH_LONG).show()
                             return@ToggleCard
                         }
-                        viewModel.togglePrivateDns(newValue)
+                        viewModel.onPrivateDnsToggleRequested(newValue)
                     }
                 )
 
@@ -220,69 +224,80 @@ fun SecurityScreen(prefs: PrefsManager) {
                     )
                 }
 
-                Spacer(Modifier.height(8.dp))
+            }
+        }
 
-                // Hostname Selection Box UI
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF111827)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Select DNS Hostname Provider",
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFF1F5F9),
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(40.dp))
 
-                        // List of hostnames
+
+    }
+
+    if (showEnableHostnameDialog) {
+        var tempSelection by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissEnableHostnameDialog() },
+            title = { Text("Choose a Private DNS host") },
+            text = {
+                Column {
+                    Text(
+                        "Select which secure DNS provider to use. This is asked every time " +
+                                "you turn Private DNS on.",
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    if (isApplyingPrivateDns) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Checking host…", fontSize = 13.sp)
+                        }
+                    } else {
                         hostnameList.forEach { hostname ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable(enabled = isDeviceOwner) {
-                                        viewModel.selectHostname(hostname)
-                                    }
+                                    .clickable { tempSelection = hostname }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
-                                    selected = (selectedHostname == hostname),
-                                    onClick = {
-                                        if (isDeviceOwner) viewModel.selectHostname(hostname)
-                                    },
-                                    enabled = isDeviceOwner
+                                    selected = (tempSelection == hostname),
+                                    onClick = { tempSelection = hostname }
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = hostname,
-                                    color = Color(0xFFCBD5E1),
-                                    fontSize = 14.sp
-                                )
+                                Text(hostname, fontSize = 14.sp)
                             }
                         }
 
                         Spacer(Modifier.height(8.dp))
-
-                        // Button to add new hostname
                         OutlinedButton(
                             onClick = { viewModel.onAddHostnameClicked() },
-                            enabled = isDeviceOwner,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("+ Add Custom Hostname")
                         }
                     }
                 }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = tempSelection != null && !isApplyingPrivateDns,
+                    onClick = { tempSelection?.let { viewModel.confirmEnablePrivateDns(it) } }
+                ) {
+                    Text("Enable")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isApplyingPrivateDns,
+                    onClick = { viewModel.dismissEnableHostnameDialog() }
+                ) {
+                    Text("Cancel")
+                }
             }
-        }
-
-
-        Spacer(Modifier.height(40.dp))
-
-
+        )
     }
     if (showAddDialog) {
         AlertDialog(
