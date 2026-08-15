@@ -313,6 +313,12 @@ class PrefsManager(context: Context) {
         }
     }
 
+    var isPrivateDnsLocked: Boolean
+        get() = prefs.getBoolean(KEY_PRIVATE_DNS_LOCKED, false)
+        set(value) {
+            prefs.edit { putBoolean(KEY_PRIVATE_DNS_LOCKED, value) }
+        }
+
 
     companion object {
         // ── Keys ──────────────────────────────────────────────────────────────────
@@ -346,5 +352,6 @@ class PrefsManager(context: Context) {
         private const val KEY_PRIVATE_DNS_ENABLED = "private_dns_enabled"
         private const val KEY_SELECTED_PRIVATE_DNS = "selected_private_dns"
         private const val KEY_CUSTOM_DNS_LIST = "custom_dns_list"
+        private const val KEY_PRIVATE_DNS_LOCKED = "private_dns_locked"
     }
 }

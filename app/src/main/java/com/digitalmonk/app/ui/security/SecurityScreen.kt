@@ -58,6 +58,7 @@ fun SecurityScreen(prefs: PrefsManager) {
     val showEnableHostnameDialog by viewModel.showEnableHostnameDialog.collectAsState()
     val isApplyingPrivateDns by viewModel.isApplyingPrivateDns.collectAsState()
     val privateDnsError by viewModel.privateDnsError.collectAsState()
+    val isPrivateDnsLocked by viewModel.isPrivateDnsLocked.collectAsState()
 
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
@@ -214,6 +215,21 @@ fun SecurityScreen(prefs: PrefsManager) {
                         viewModel.onPrivateDnsToggleRequested(newValue)
                     }
                 )
+                Spacer(Modifier.height(4.dp))
+
+                ToggleCard(
+                    emoji = "🔐",
+                    title = "Lock Private DNS in Settings",
+                    subtitle = "Prevents changing or turning off Private DNS from the phone's system Settings app.",
+                    isEnabled = isPrivateDnsLocked && isDeviceOwner,
+                    onToggle = { newValue ->
+                        if (!isDeviceOwner) {
+                            Toast.makeText(context, "App must be Device Owner to lock Private DNS settings.", Toast.LENGTH_LONG).show()
+                            return@ToggleCard
+                        }
+                        viewModel.onPrivateDnsLockToggleRequested(newValue)
+                    }
+                )
 
                 if (!isDeviceOwner) {
                     Spacer(Modifier.height(6.dp))
@@ -255,35 +271,41 @@ fun SecurityScreen(prefs: PrefsManager) {
                             Text("Checking host…", fontSize = 13.sp)
                         }
                     } else {
-                        hostnameList.forEach { hostname ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { tempSelection = hostname }
-                                    .padding(vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = (tempSelection == hostname),
-                                    onClick = { tempSelection = hostname }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(hostname, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Column(
+                            modifier = Modifier
+                                .heightIn(max = 280.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            hostnameList.forEach { hostname ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { tempSelection = hostname }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = (tempSelection == hostname),
+                                        onClick = { tempSelection = hostname }
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(hostname, fontSize = 14.sp, modifier = Modifier.weight(1f))
 
-                                if (!viewModel.isDefaultHostname(hostname)) {
-                                    IconButton(
-                                        onClick = {
-                                            if (tempSelection == hostname) tempSelection = null
-                                            viewModel.deleteHostname(hostname)
-                                        },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = androidx.compose.material.icons.Icons.Rounded.Delete,
-                                            contentDescription = "Remove $hostname",
-                                            tint = Color(0xFFEF4444),
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                    if (!viewModel.isDefaultHostname(hostname)) {
+                                        IconButton(
+                                            onClick = {
+                                                if (tempSelection == hostname) tempSelection = null
+                                                viewModel.deleteHostname(hostname)
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = androidx.compose.material.icons.Icons.Rounded.Delete,
+                                                contentDescription = "Remove $hostname",
+                                                tint = Color(0xFFEF4444),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

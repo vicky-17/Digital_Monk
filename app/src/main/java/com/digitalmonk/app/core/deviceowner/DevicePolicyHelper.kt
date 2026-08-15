@@ -86,4 +86,56 @@ object DevicePolicyHelper {
             false
         }
     }
+
+    /**
+     * Reads the actual current Private DNS state directly from the system,
+     * rather than trusting cached SharedPreferences. Used to re-sync UI state
+     * every time the Security screen is opened, since the mode can change
+     * outside the app.
+     *
+     * @return Pair(isEnabledViaHostname, hostnameOrEmpty).
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun getCurrentPrivateDnsState(context: Context): Pair<Boolean, String> {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        val adminComponent = ComponentName(context, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
+
+        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
+            return false to ""
+        }
+
+        return try {
+            val mode = dpm.getGlobalPrivateDnsMode(adminComponent)
+            if (mode == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME) {
+                val host = dpm.getGlobalPrivateDnsHost(adminComponent) ?: ""
+                true to host
+            } else {
+                false to ""
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read current Private DNS state: ${e.message}")
+            false to ""
+        }
+    }
+
+    /**
+     * Returns true if DISALLOW_CONFIG_PRIVATE_DNS is currently active, i.e. the
+     * Private DNS entry in system Settings is locked from the user.
+     */
+    fun isPrivateDnsSettingsLocked(context: Context): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        val adminComponent = ComponentName(context, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
+
+        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
+            return false
+        }
+
+        return try {
+            val restrictions = dpm.getUserRestrictions(adminComponent)
+            restrictions.getBoolean(android.os.UserManager.DISALLOW_CONFIG_PRIVATE_DNS, false)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read Private DNS restriction state: ${e.message}")
+            false
+        }
+    }
 }

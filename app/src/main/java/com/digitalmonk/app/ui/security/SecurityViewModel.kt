@@ -80,8 +80,6 @@ class SecurityViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _isApplyingPrivateDns.value = true
             DevicePolicyHelper.applyPrivateDns(context, false, "")
-            // Unlock system Settings again since Private DNS is now parent-disabled from within the app
-            DevicePolicyHelper.setPrivateDnsUserRestriction(context, false)
             _isApplyingPrivateDns.value = false
         }
     }
@@ -101,8 +99,6 @@ class SecurityViewModel(
                 prefsManager.selectedPrivateDnsHostname = hostname
                 _isPrivateDnsEnabled.value = true
                 _selectedHostname.value = hostname
-                // Lock the system Settings so the user can't turn this off outside the app
-                DevicePolicyHelper.setPrivateDnsUserRestriction(context, true)
             } else {
                 _privateDnsError.value =
                     "Could not enable Private DNS using \"$hostname\". " +
@@ -170,6 +166,59 @@ class SecurityViewModel(
 
     fun dismissDialog() {
         _showConfirmDialog.value = false
+    }
+
+
+    // ── Private DNS "lock settings" state ─────────────────────────────────────
+    private val _isPrivateDnsLocked = MutableStateFlow(prefsManager.isPrivateDnsLocked)
+    val isPrivateDnsLocked: StateFlow<Boolean> = _isPrivateDnsLocked.asStateFlow()
+
+    init {
+        refreshPrivateDnsState()
+    }
+
+    /**
+     * Re-syncs Private DNS UI state from the actual system settings rather than
+     * trusting the cached preference. Called every time this ViewModel is
+     * created (i.e. every time the Security screen is opened) so the toggle
+     * never shows a stale state.
+     */
+    fun refreshPrivateDnsState() {
+        if (!isDeviceOwner) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val (systemEnabled, systemHost) = DevicePolicyHelper.getCurrentPrivateDnsState(context)
+            val lockActive = DevicePolicyHelper.isPrivateDnsSettingsLocked(context)
+
+            _isPrivateDnsEnabled.value = systemEnabled
+            prefsManager.isPrivateDnsEnabled = systemEnabled
+
+            if (systemEnabled && systemHost.isNotBlank()) {
+                _selectedHostname.value = systemHost
+                prefsManager.selectedPrivateDnsHostname = systemHost
+            }
+
+            _isPrivateDnsLocked.value = lockActive
+            prefsManager.isPrivateDnsLocked = lockActive
+        }
+    }
+
+    /**
+     * Called when the parent flips "Lock Private DNS in Settings".
+     * Independent of enabling/disabling Private DNS itself — this only
+     * controls whether the child can reach the Private DNS screen in
+     * system Settings at all.
+     */
+    fun onPrivateDnsLockToggleRequested(lockRequested: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = DevicePolicyHelper.setPrivateDnsUserRestriction(context, lockRequested)
+            if (success) {
+                _isPrivateDnsLocked.value = lockRequested
+                prefsManager.isPrivateDnsLocked = lockRequested
+            } else {
+                _privateDnsError.value =
+                    "Could not update the Private DNS lock. Make sure Digital Monk is set as Device Owner."
+            }
+        }
     }
 
 }
