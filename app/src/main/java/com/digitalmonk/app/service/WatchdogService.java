@@ -58,6 +58,8 @@ public class WatchdogService extends Service {
 
     private static final String TAG = "WatchdogService";
 
+    private android.database.ContentObserver dnsObserver;
+
     public static final int WATCHDOG_JOB_ID = 42;
 
     // ── Loop intervals ────────────────────────────────────────────────────────
@@ -162,6 +164,24 @@ public class WatchdogService extends Service {
         super.onCreate();
         prefs = new PrefsManager(this);
 
+        // Listen for Private DNS changes (Fixing Main Thread error + adding delay)
+        dnsObserver = new android.database.ContentObserver(null) { // Passing null here means it won't use a specific handler for the event itself
+            @Override
+            public void onChange(boolean selfChange) {
+                super.onChange(selfChange);
+                // Use the existing protectionHandler (which is a background thread)
+                // and add a 1-second delay so we don't fight MIUI while the user is still clicking.
+                protectionHandler.postDelayed(() -> {
+                    com.digitalmonk.app.core.deviceowner.DevicePolicyHelper.INSTANCE.reapplyPolicyIfMismatched(WatchdogService.this);
+                }, 1000L);
+            }
+        };
+        getContentResolver().registerContentObserver(
+                android.provider.Settings.Global.getUriFor("private_dns_mode"),
+                false,
+                dnsObserver
+        );
+
         // Loop 1: health check (30s)
         healthCheckThread = new HandlerThread("watchdog-health");
         healthCheckThread.start();
@@ -253,6 +273,7 @@ public class WatchdogService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        if (dnsObserver != null) getContentResolver().unregisterContentObserver(dnsObserver);
         if (healthHandler    != null) healthHandler.removeCallbacksAndMessages(null);
         if (settingsHandler  != null) settingsHandler.removeCallbacksAndMessages(null);
         if (protectionHandler != null) protectionHandler.removeCallbacksAndMessages(null);  // NEW
@@ -356,6 +377,9 @@ public class WatchdogService extends Service {
     }
 
     private void performProtectionCheck() {
+
+        com.digitalmonk.app.core.deviceowner.DevicePolicyHelper.INSTANCE.reapplyPolicyIfMismatched(this);
+
         Set<ProtectionIssue> currentIssues = protectionMonitor.check();
 
         boolean changed = !currentIssues.equals(lastKnownIssues);

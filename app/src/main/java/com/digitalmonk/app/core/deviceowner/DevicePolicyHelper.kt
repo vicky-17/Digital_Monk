@@ -138,4 +138,42 @@ object DevicePolicyHelper {
             false
         }
     }
+
+    /**
+     * Checks the actual system Private DNS state. If the "Lock" is on in Prefs
+     * but the system is NOT set to the correct hostname, this method forces
+     * it back immediately.
+     */
+    fun reapplyPolicyIfMismatched(context: Context) {
+        val prefs = com.digitalmonk.app.data.local.prefs.PrefsManager(context)
+
+        // Only enforce if both Enabled and Locked are true in our app
+        if (!prefs.isPrivateDnsEnabled || !prefs.isPrivateDnsLocked) return
+
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
+        val adminComponent = android.content.ComponentName(context, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
+
+        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) return
+
+        try {
+            val currentMode = dpm.getGlobalPrivateDnsMode(adminComponent)
+            val currentHost = dpm.getGlobalPrivateDnsHost(adminComponent) ?: ""
+            val desiredHost = prefs.selectedPrivateDnsHostname
+
+            val isWrongMode = currentMode != android.app.admin.DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME
+            val isWrongHost = currentHost != desiredHost
+
+            if (isWrongMode || isWrongHost) {
+                android.util.Log.w("DevicePolicyHelper", "DNS mismatch detected! Mode=$currentMode, Host=$currentHost. Re-applying $desiredHost")
+
+                // Force the policy back
+                dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, desiredHost)
+
+                // Also ensure the standard user restriction is still set
+                dpm.addUserRestriction(adminComponent, android.os.UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DevicePolicyHelper", "Failed to re-apply DNS policy: ${e.message}")
+        }
+    }
 }
