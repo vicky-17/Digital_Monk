@@ -113,7 +113,7 @@ fun PinSetupScreen(onPinSaved: () -> Unit) {
                         prefs.savePin(pin)
 
                         // Critical: Ensures the App recognizes setup is done
-                        prefs.setSetupComplete(true)
+                        prefs.isSetupComplete = true
 
                         Toast.makeText(context, "PIN saved ✅", Toast.LENGTH_SHORT).show()
                         onPinSaved()

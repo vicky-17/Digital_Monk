@@ -55,11 +55,11 @@ fun DashboardScreen(
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             safeSearchEnabled = true
-            prefs.setSafeSearchEnabled(true)
+            prefs.isSafeSearchEnabled = true
             context.startService(Intent(context, DnsVpnService::class.java))
         } else {
             safeSearchEnabled = false
-            prefs.setSafeSearchEnabled(false)
+            prefs.isSafeSearchEnabled = false
             Toast.makeText(context, "VPN Permission is required for Web Filtering", Toast.LENGTH_LONG).show()
         }
     }
@@ -86,7 +86,7 @@ fun DashboardScreen(
                     return@DashboardToggleCard
                 }
                 blockShorts = newVal
-                prefs.setBlockShorts(newVal)
+                prefs.isBlockShorts = newVal
             }
         )
 
@@ -109,13 +109,13 @@ fun DashboardScreen(
                         vpnPermissionLauncher.launch(vpnIntent)
                     } else {
                         safeSearchEnabled = true
-                        prefs.setSafeSearchEnabled(true)
+                        prefs.isSafeSearchEnabled = true
                         context.startService(Intent(context, DnsVpnService::class.java))
                         showAlwaysOnDialog = true
                     }
                 } else {
                     safeSearchEnabled = false
-                    prefs.setSafeSearchEnabled(false)
+                    prefs.isSafeSearchEnabled = false
                     context.startService(Intent(context, DnsVpnService::class.java).apply {
                         action = DnsVpnService.ACTION_STOP
                     })

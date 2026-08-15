@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.digitalmonk.app.data.local.prefs.PrefsManager
 import com.digitalmonk.app.ui.components.cards.ToggleCard
+import com.digitalmonk.app.ui.components.dialogs.ConfirmDialog
 import com.digitalmonk.app.ui.components.dialogs.PinGateDialog
 import com.digitalmonk.app.ui.components.dialogs.PreventVpnOverrideDialog
 import com.digitalmonk.app.ui.components.dialogs.VpnKeepAliveDialog
@@ -35,6 +36,10 @@ private val DividerCol  = Color(0xFF1E293B)
 @Composable
 fun SecurityScreen(prefs: PrefsManager) {
     val context = LocalContext.current
+    val viewModel = remember { SecurityViewModel(prefs) }
+
+    val isPermissionBlockEnabled by viewModel.isPermissionBlockEnabled.collectAsState()
+    val showConfirmDialog by viewModel.showConfirmDialog.collectAsState()
 
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
@@ -146,10 +151,32 @@ fun SecurityScreen(prefs: PrefsManager) {
             }
         )
 
+        Spacer(Modifier.height(24.dp))
+
+        SectionLabel("STRICT PERMISSION ENFORCEMENT")
+
+        ToggleCard(
+            emoji     = "⚠️",
+            title     = "Strict Permission Blocking",
+            subtitle  = "Block entire screen if required permissions are missing.",
+            isEnabled = isPermissionBlockEnabled,
+            onToggle  = { isChecked ->
+                viewModel.onToggleClicked(isChecked)
+            }
+        )
+
         Spacer(Modifier.height(40.dp))
     }
 
     // ── Dialogs ───────────────────────────────────────────────────────────────
+    if (showConfirmDialog) {
+        ConfirmDialog(
+            title = "Change Security Setting",
+            message = "Are you sure you want to change the permission blocking behavior? Disabling this might prevent the app from enforcing rules effectively.",
+            onConfirm = { viewModel.confirmToggle() },
+            onDismiss = { viewModel.dismissDialog() }
+        )
+    }
 
     if (showKeepAliveInfoDialog) {
         VpnKeepAliveDialog(
