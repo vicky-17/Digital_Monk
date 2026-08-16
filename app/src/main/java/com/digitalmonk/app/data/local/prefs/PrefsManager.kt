@@ -353,5 +353,24 @@ class PrefsManager(context: Context) {
         private const val KEY_SELECTED_PRIVATE_DNS = "selected_private_dns"
         private const val KEY_CUSTOM_DNS_LIST = "custom_dns_list"
         private const val KEY_PRIVATE_DNS_LOCKED = "private_dns_locked"
+        private const val KEY_BLOCKED_WEBSITES = "blocked_websites"
+    }
+
+    var blockedWebsites: MutableSet<String>
+        get() = prefs.getStringSet(KEY_BLOCKED_WEBSITES, emptySet()) ?: emptySet<String>().toMutableSet()
+        set(value) {
+            prefs.edit { putStringSet(KEY_BLOCKED_WEBSITES, value) }
+        }
+
+    fun addBlockedWebsite(url: String) {
+        val websites = blockedWebsites.toMutableSet()
+        websites.add(url)
+        blockedWebsites = websites
+    }
+
+    fun removeBlockedWebsite(url: String) {
+        val websites = blockedWebsites.toMutableSet()
+        websites.remove(url)
+        blockedWebsites = websites
     }
 }

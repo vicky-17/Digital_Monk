@@ -25,6 +25,7 @@ import com.digitalmonk.app.core.utils.AlarmScheduler;
 import com.digitalmonk.app.core.utils.Constants;
 import com.digitalmonk.app.data.local.prefs.PrefsManager;
 import com.digitalmonk.app.service.accessibility.AllowlistManager;
+import com.digitalmonk.app.service.monitor.AppBlockEngineService;
 import com.digitalmonk.app.service.monitor.ProtectionIssue;
 import com.digitalmonk.app.service.monitor.ProtectionStateMonitor;
 import com.digitalmonk.app.service.monitor.SettingsAppMonitor;
@@ -139,6 +140,19 @@ public class WatchdogService extends Service {
         }
     }
 
+    public static void startAppBlockEngine(Context context) {
+        Intent intent = new Intent(context, AppBlockEngineService.class);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start AppBlockEngineService", e);
+        }
+    }
+
     public static void scheduleJobBackup(Context context) {
         JobScheduler js = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (js == null) return;
@@ -245,6 +259,7 @@ public class WatchdogService extends Service {
         startHealthCheckLoop();
         startSettingsPollLoop();
         startProtectionCheckLoop();  // NEW
+        startAppBlockEngine(this);   // Start the new app blocker
         scheduleJobBackup(this);
         AlarmScheduler.scheduleRepeating(this);
 
@@ -300,6 +315,9 @@ public class WatchdogService extends Service {
     private void performHealthCheck() {
 //        Log.d(TAG, "🔍 Health check…");
         AllowlistManager.getInstance().pruneExpired(); // Clean expired allowlist entries
+
+        // App Block Engine watchdog
+        startAppBlockEngine(this);
 
         // VPN watchdog
         if (prefs.isSafeSearchEnabled() && !DnsVpnService.isServiceRunning) {

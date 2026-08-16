@@ -53,6 +53,7 @@ import com.digitalmonk.app.ui.theme.DigitalMonkTheme
 import kotlinx.coroutines.delay
 import com.digitalmonk.app.ui.dashboard.DashboardScreen
 import com.digitalmonk.app.ui.security.SecurityScreen
+import com.digitalmonk.app.ui.locks.LocksScreen
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 private val BgDeep      = Color(0xFF080E1A)
@@ -335,7 +336,7 @@ class MainActivity : BaseActivity() {
                                             startActivity(Intent(this@MainActivity, PinSetupActivity::class.java))
                                         }
                                     )
-                                    Screen.LOCKS    -> FullScreenPlaceholder("🛡️ App & Website Locks")
+                                    Screen.LOCKS    -> LocksScreen(prefs = prefs)
                                     Screen.SECURITY -> SecurityScreen(prefs = prefs)
                                     Screen.SETTINGS -> SettingsScreen(
                                         // Flip destination → Compose discards the Scaffold tree

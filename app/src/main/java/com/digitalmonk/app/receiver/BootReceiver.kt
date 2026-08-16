@@ -36,6 +36,7 @@ class BootReceiver : BroadcastReceiver() {
 
         // 1. Always start WatchdogService — it's the root guardian
         WatchdogService.start(context)
+        WatchdogService.startAppBlockEngine(context) // Also start blocker
         AlarmScheduler.scheduleRepeating(context)
 
         // 2. Restart VPN if it was active before reboot

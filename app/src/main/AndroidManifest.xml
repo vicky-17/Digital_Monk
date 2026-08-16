@@ -72,6 +72,14 @@
             android:taskAffinity="com.example.digitalmonk.block_task"
             android:theme="@style/Theme.DigitalMonk" />
 
+        <activity
+            android:name=".ui.locks.InterstitialActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:noHistory="true"
+            android:theme="@style/Theme.DigitalMonk" />
+
 
         <!-- ════════════════════════════════════════════════════════════════
              SERVICES
@@ -128,6 +136,16 @@
         <service
             android:name=".service.vpn.VpnMonitorService"
             android:exported="false" />
+
+        <!-- ── App Blocking Engine Service ──────────────────────────────── -->
+        <service
+            android:name=".service.monitor.AppBlockEngineService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="parental_control_guardian" />
+        </service>
 
         <!-- ── Overlay Services ──────────────────────────────────────────── -->
         <service
