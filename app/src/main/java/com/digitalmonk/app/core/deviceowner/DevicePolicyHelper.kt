@@ -176,4 +176,84 @@ object DevicePolicyHelper {
             android.util.Log.e("DevicePolicyHelper", "Failed to re-apply DNS policy: ${e.message}")
         }
     }
+
+
+    /**
+     * Prevents or allows uninstallation of a specific package.
+     * Requires Device Owner status.
+     */
+    fun setUninstallBlocked(context: Context, packageName: String, blocked: Boolean): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        val adminComponent = ComponentName(context, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
+
+        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
+            Log.w(TAG, "Cannot set uninstall block: App is not Device Owner")
+            return false
+        }
+
+        return try {
+            dpm.setUninstallBlocked(adminComponent, packageName, blocked)
+            Log.i(TAG, "Uninstall blocked for $packageName: $blocked")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set uninstall block for $packageName: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Checks if uninstallation is blocked for a specific package.
+     */
+    fun isUninstallBlocked(context: Context, packageName: String): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        val adminComponent = ComponentName(context, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
+
+        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
+            return false
+        }
+
+        return try {
+            dpm.isUninstallBlocked(adminComponent, packageName)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check uninstall block for $packageName: ${e.message}")
+            false
+        }
+    }
+
+
+    /**
+     * Prevents apps in the list from being disabled or force-stopped by the user.
+     * Requires Device Owner.
+     */
+    fun setControlDisabledPackages(context: Context, packages: List<String>): Boolean {
+        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return false
+        val adminComponent = ComponentName(context, "com.digitalmonk.app.receiver.MonkDeviceAdminReceiver")
+
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return false
+
+        return try {
+            dpm.setControlDisabledPackages(adminComponent, packages)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set control disabled packages", e)
+            false
+        }
+    }
+
+    /**
+     * Returns the list of packages currently protected from being disabled/stopped.
+     */
+    fun getControlDisabledPackages(context: Context): List<String> {
+        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return emptyList()
+        val adminComponent = ComponentName(context, "com.digitalmonk.app.receiver.MonkDeviceAdminReceiver")
+
+        if (!dpm.isDeviceOwnerApp(context.packageName)) return emptyList()
+
+        return try {
+            dpm.getControlDisabledPackages(adminComponent)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
 }

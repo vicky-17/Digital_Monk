@@ -1,12 +1,14 @@
 package com.digitalmonk.app.ui.components.cards
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -55,9 +57,33 @@ fun StatusCard(
             // Status Indicator Dot
             Surface(
                 modifier = Modifier.size(12.dp),
-                shape = androidx.compose.foundation.shape.CircleShape,
+                shape = CircleShape,
                 color = if (isActive) Color(0xFF22C55E) else Color(0xFFEF4444)
             ) {}
         }
+    }
+}
+
+@Preview(name = "Status — Active", showBackground = true, backgroundColor = 0xFF080E1A)
+@Composable
+fun StatusCardActivePreview() {
+    MaterialTheme {
+        StatusCard(
+            label = "VPN STATUS",
+            statusText = "Connected & Filtering",
+            isActive = true
+        )
+    }
+}
+
+@Preview(name = "Status — Inactive", showBackground = true, backgroundColor = 0xFF080E1A)
+@Composable
+fun StatusCardInactivePreview() {
+    MaterialTheme {
+        StatusCard(
+            label = "VPN STATUS",
+            statusText = "Disconnected",
+            isActive = false
+        )
     }
 }

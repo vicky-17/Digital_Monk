@@ -11,6 +11,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.digitalmonk.app.core.deviceowner.DevicePolicyHelper
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
+import android.widget.Toast
+import kotlinx.coroutines.withContext
+
 
 class SecurityViewModel(
     private val prefsManager: PrefsManager,
@@ -53,6 +59,27 @@ class SecurityViewModel(
     // Surfaces failures instead of swallowing them silently
     private val _privateDnsError = MutableStateFlow<String?>(null)
     val privateDnsError: StateFlow<String?> = _privateDnsError.asStateFlow()
+
+
+
+    data class AppInfo(
+        val packageName: String,
+        val name: String,
+        val icon: Drawable?,
+        val isUninstallBlocked: Boolean,
+        val isForceStopBlocked: Boolean
+    )
+
+    private val _installedApps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val installedApps: StateFlow<List<AppInfo>> = _installedApps.asStateFlow()
+
+    private val _isLoadingApps = MutableStateFlow(false)
+    val isLoadingApps: StateFlow<Boolean> = _isLoadingApps.asStateFlow()
+
+    private val _showAppListDialog = MutableStateFlow(false)
+    val showAppListDialog: StateFlow<Boolean> = _showAppListDialog.asStateFlow()
+
+
 
     fun clearPrivateDnsError() {
         _privateDnsError.value = null
@@ -220,5 +247,84 @@ class SecurityViewModel(
             }
         }
     }
+
+
+
+
+
+
+    fun onOpenAppListRequested() {
+        _showAppListDialog.value = true
+        fetchInstalledApps()
+    }
+
+    fun dismissAppListDialog() {
+        _showAppListDialog.value = false
+    }
+
+    private fun fetchInstalledApps() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoadingApps.value = true
+            val pm = context.packageManager
+
+            // Get currently protected packages from the system
+            val protectedFromStop = DevicePolicyHelper.getControlDisabledPackages(context)
+
+            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0 }
+                .map { app ->
+                    AppInfo(
+                        packageName = app.packageName,
+                        name = app.loadLabel(pm).toString(),
+                        icon = app.loadIcon(pm),
+                        isUninstallBlocked = DevicePolicyHelper.isUninstallBlocked(context, app.packageName),
+                        isForceStopBlocked = protectedFromStop.contains(app.packageName)
+                    )
+                }
+                .sortedBy { it.name }
+            _installedApps.value = apps
+            _isLoadingApps.value = false
+        }
+    }
+
+    // In SecurityViewModel.kt inside toggleUninstallProtection
+    fun toggleUninstallProtection(packageName: String, blocked: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = DevicePolicyHelper.setUninstallBlocked(context, packageName, blocked)
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    _installedApps.value = _installedApps.value.map {
+                        if (it.packageName == packageName) it.copy(isUninstallBlocked = blocked) else it
+                    }
+                    Toast.makeText(context, "Protection ${if (blocked) "Enabled" else "Disabled"} for $packageName", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Failed to update protection. Is Device Owner active?", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun toggleForceStopProtection(packageName: String, blocked: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val currentList = DevicePolicyHelper.getControlDisabledPackages(context).toMutableList()
+
+            if (blocked) {
+                if (!currentList.contains(packageName)) currentList.add(packageName)
+            } else {
+                currentList.remove(packageName)
+            }
+
+            val success = DevicePolicyHelper.setControlDisabledPackages(context, currentList)
+            if (success) {
+                _installedApps.value = _installedApps.value.map {
+                    if (it.packageName == packageName) it.copy(isForceStopBlocked = blocked) else it
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Force Stop ${if (blocked) "Disabled" else "Enabled"} for $packageName", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
 
 }

@@ -15,6 +15,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material3.Icon
 
 // Local UI Colors
 private val AccentCyan   = Color(0xFF06B6D4)
@@ -28,15 +32,18 @@ fun ToggleCard(
     title: String,
     subtitle: String,
     isEnabled: Boolean,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    isLocked: Boolean = false,
+    onLockClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(if (isEnabled) Color(0xFF0A1520) else Color.Transparent)
             .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically // Changed from Top to Center for better alignment
     ) {
+        // Emoji Icon
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -49,22 +56,49 @@ fun ToggleCard(
 
         Spacer(Modifier.width(12.dp))
 
+        // Text Column
         Column(modifier = Modifier.weight(1f)) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
             Spacer(Modifier.height(2.dp))
             Text(subtitle, fontSize = 11.sp, color = TextSecond, lineHeight = 15.sp)
         }
 
-        Spacer(Modifier.width(8.dp))
+        // --- NEW LOCK ICON PLACEMENT ---
+        if (onLockClick != null && isEnabled) {
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .clip(CircleShape)
+                    // If locked, show a subtle gold glow background
+                    .background(if (isLocked) Color(0xFFFACC15).copy(alpha = 0.1f) else Color.Transparent)
+                    .clickable(enabled = !isLocked) { onLockClick() }
+                    .padding(10.dp) // Larger touch target
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Lock,
+                    contentDescription = "Lock Settings",
+                    // Yellow when locked, Grey-blue when available
+                    tint = if (isLocked) Color(0xFFFFD700) else Color(0xFF94A3B8),
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
 
+        Spacer(Modifier.width(4.dp))
+
+        // Toggle Switch
         Switch(
             checked = isEnabled,
             onCheckedChange = onToggle,
+            enabled = !isLocked,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = AccentCyan,
                 uncheckedThumbColor = Color(0xFF64748B),
-                uncheckedTrackColor = TextMuted
+                uncheckedTrackColor = TextMuted,
+                // Add these for better locked state visibility
+                disabledCheckedTrackColor = AccentCyan.copy(alpha = 0.4f),
+                disabledCheckedThumbColor = Color.White.copy(alpha = 0.6f)
             )
         )
     }
@@ -79,7 +113,8 @@ fun ToggleCardPreview() {
             title = "Enabled Toggle",
             subtitle = "This is what an active toggle looks like.",
             isEnabled = true,
-            onToggle = {}
+            onToggle = {},
+            isLocked = false
         )
         ToggleCard(
             emoji = "🔒",

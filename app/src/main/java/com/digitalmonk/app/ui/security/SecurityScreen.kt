@@ -29,6 +29,18 @@ import com.digitalmonk.app.ui.components.dialogs.VpnKeepAliveDialog
 import com.digitalmonk.app.ui.sidebar.formatRemainingTime
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
+import com.digitalmonk.app.ui.components.dialogs.LockSettingsDialog
+import android.os.SystemClock
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.ui.draw.clip
+import com.digitalmonk.app.ui.components.cards.ActionCard
+
+import com.digitalmonk.app.ui.components.cards.DnsProtectionCard
+
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.draw.scale
+import androidx.core.graphics.createBitmap
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 private val ScreenBg   = Color(0xFF080E1A)
@@ -70,6 +82,8 @@ fun SecurityScreen(prefs: PrefsManager) {
     var showPreventVpnDialog        by remember { mutableStateOf(false) }
     var showDisableVpnPinDialog     by remember { mutableStateOf(false) }
     var showAntiUninstallPinDialog  by remember { mutableStateOf(false) }
+
+    var showDnsLockDialog by remember { mutableStateOf(false) }
 
     // ── UI ────────────────────────────────────────────────────────────────────
     Column(
@@ -172,6 +186,13 @@ fun SecurityScreen(prefs: PrefsManager) {
 
         Spacer(Modifier.height(24.dp))
 
+        ActionCard(
+            title = "App Uninstall Protection",
+            description = "Choose apps that cannot be uninstalled from this device.",
+            icon = androidx.compose.material.icons.Icons.Rounded.Security,
+            onClick = { viewModel.onOpenAppListRequested() }
+        )
+
         SectionLabel("STRICT PERMISSION ENFORCEMENT")
 
         ToggleCard(
@@ -186,67 +207,78 @@ fun SecurityScreen(prefs: PrefsManager) {
 
         Spacer(Modifier.height(24.dp))
 
-        SectionLabel("PRIVATE DNS CONFIGURATION")
+        SectionLabel("PRIVATE DNS PROTECTION")
 
-        LaunchedEffect(privateDnsError) {
-            privateDnsError?.let { message ->
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                viewModel.clearPrivateDnsError()
-            }
-        }
-        // Container card with conditional fade if not device owner
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .alpha(if (isDeviceOwner) 1f else 0.38f)
-        ) {
-            Column {
-                ToggleCard(
-                    emoji = "🌐",
-                    title = "Enable Private DNS",
-                    subtitle = "Route device DNS traffic through a secure custom hostname provider.",
-                    isEnabled = isPrivateDnsEnabled && isDeviceOwner,
-                    onToggle = { newValue ->
-                        if (!isDeviceOwner) {
-                            Toast.makeText(context, "App must be Device Owner to change Private DNS settings.", Toast.LENGTH_LONG).show()
-                            return@ToggleCard
-                        }
-                        viewModel.onPrivateDnsToggleRequested(newValue)
-                    }
-                )
-                Spacer(Modifier.height(4.dp))
-
-                ToggleCard(
-                    emoji = "🔐",
-                    title = "Lock Private DNS in Settings",
-                    subtitle = "Prevents changing or turning off Private DNS from the phone's system Settings app.",
-                    isEnabled = isPrivateDnsLocked && isDeviceOwner,
-                    onToggle = { newValue ->
-                        if (!isDeviceOwner) {
-                            Toast.makeText(context, "App must be Device Owner to lock Private DNS settings.", Toast.LENGTH_LONG).show()
-                            return@ToggleCard
-                        }
-                        viewModel.onPrivateDnsLockToggleRequested(newValue)
-                    }
-                )
-
+        DnsProtectionCard(
+            isEnabled = isPrivateDnsEnabled && isDeviceOwner,
+            selectedHostname = selectedHostname,
+            isSettingsLocked = isPrivateDnsLocked && isDeviceOwner,
+            isTimedLockActive = prefs.isSettingsLocked,
+            lockUntil = prefs.lockUntil,
+            isDeviceOwner = isDeviceOwner,
+            onDnsToggle = { newValue ->
                 if (!isDeviceOwner) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "🔒 Requires Device Owner permission to configure Private DNS.",
-                        fontSize = 11.sp,
-                        color = Color(0xFFEF4444),
-                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                    )
+                    Toast.makeText(context, "Requires Device Owner.", Toast.LENGTH_LONG).show()
+                } else if (!prefs.isSettingsLocked) {
+                    viewModel.onPrivateDnsToggleRequested(newValue)
                 }
-
+            },
+            onHostClick = {
+                viewModel.onPrivateDnsToggleRequested(true) // Re-opens host picker
+            },
+            onSettingsLockToggle = { newValue ->
+                if (!isDeviceOwner) {
+                    Toast.makeText(context, "Requires Device Owner.", Toast.LENGTH_LONG).show()
+                } else if (prefs.isSettingsLocked && !newValue) {
+                    // Strict check: Cannot turn OFF shield while locked
+                    Toast.makeText(context, "Cannot disable shield while locked.", Toast.LENGTH_LONG).show()
+                } else {
+                    viewModel.onPrivateDnsLockToggleRequested(newValue)
+                }
+            },
+            onLockClick = {
+                if (isPrivateDnsEnabled) {
+                    showDnsLockDialog = true
+                } else {
+                    Toast.makeText(context, "Turn on DNS filtering first to lock it.", Toast.LENGTH_SHORT).show()
+                }
             }
-        }
+        )
 
         Spacer(Modifier.height(40.dp))
 
 
+    }
+
+
+    val showAppListDialog by viewModel.showAppListDialog.collectAsState()
+    if (showAppListDialog) {
+        AppUninstallProtectionDialog(viewModel)
+    }
+
+    if (showDnsLockDialog) {
+        LockSettingsDialog(
+            onConfirm = { durationMs ->
+                val now = System.currentTimeMillis()
+                prefs.lockDurationMs = durationMs
+                prefs.lockAnchorElapsed = SystemClock.elapsedRealtime()
+                prefs.lockUntil = now + durationMs
+                prefs.lastKnownDeviceTime = now
+                prefs.lockNtpOffset = Long.MIN_VALUE
+                showDnsLockDialog = false
+
+                // Optional: Fetch NTP time for tamper-proofing (same as Dashboard)
+                Thread {
+                    val ntpTime = com.digitalmonk.app.core.utils.NtpFetcher.fetchNtpTime()
+                    if (ntpTime > 0) {
+                        val offset = ntpTime - System.currentTimeMillis()
+                        prefs.lockNtpOffset = offset
+                        prefs.lockUntil = ntpTime + durationMs
+                    }
+                }.start()
+            },
+            onDismiss = { showDnsLockDialog = false }
+        )
     }
 
     if (showEnableHostnameDialog) {
@@ -425,6 +457,115 @@ fun SecurityScreen(prefs: PrefsManager) {
             },
             onDismiss = { showAntiUninstallPinDialog = false }
         )
+    }
+}
+
+
+
+@Composable
+private fun AppUninstallProtectionDialog(viewModel: SecurityViewModel) {
+    val apps by viewModel.installedApps.collectAsState()
+    val isLoading by viewModel.isLoadingApps.collectAsState()
+
+    AlertDialog(
+        onDismissRequest = { viewModel.dismissAppListDialog() },
+        containerColor = Color(0xFF0F172A), // Match your dark theme
+        title = {
+            Text("Uninstall Protection", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column {
+                Text(
+                    "Selected apps cannot be uninstalled from this device settings.",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                Box(modifier = Modifier.heightIn(max = 450.dp)) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = Color(0xFF3B82F6)
+                        )
+                    } else {
+                        androidx.compose.foundation.lazy.LazyColumn {
+                            items(apps.size) { index ->
+                                val app = apps[index]
+                                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // --- Real App Icon ---
+                                        androidx.compose.foundation.Image(
+                                            painter = rememberAppIconPainter(app.icon),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+                                        )
+
+                                        Spacer(Modifier.width(14.dp))
+
+                                        Column(Modifier.weight(1f)) {
+                                            Text(app.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Text(app.packageName, fontSize = 11.sp, color = Color(0xFF64748B))
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(12.dp))
+
+                                    // --- Dual Toggles ---
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        // Uninstall Protection
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Anti-Uninstall", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                            Switch(
+                                                checked = app.isUninstallBlocked,
+                                                onCheckedChange = { viewModel.toggleUninstallProtection(app.packageName, it) },
+                                                modifier = Modifier.scale(0.8f) // Correct way to scale
+                                            )
+                                        }
+
+                                        // Force Stop Protection
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Block Force Stop", fontSize = 10.sp, color = Color(0xFF94A3B8))
+                                            Switch(
+                                                checked = app.isForceStopBlocked,
+                                                onCheckedChange = { viewModel.toggleForceStopProtection(app.packageName, it) },
+                                                modifier = Modifier.scale(0.8f)
+                                            )
+                                        }
+                                    }
+                                }
+                                if (index < apps.size - 1) {
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { viewModel.dismissAppListDialog() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+            ) {
+                Text("Done", color = Color.White)
+            }
+        }
+    )
+}
+
+@Composable
+fun rememberAppIconPainter(drawable: android.graphics.drawable.Drawable?): androidx.compose.ui.graphics.painter.Painter {
+    return remember(drawable) {
+        val bitmap = try {
+            drawable?.toBitmap() ?: createBitmap(1, 1)
+        } catch (e: Exception) {
+            createBitmap(1, 1)
+        }
+        androidx.compose.ui.graphics.painter.BitmapPainter(bitmap.asImageBitmap())
     }
 }
 
