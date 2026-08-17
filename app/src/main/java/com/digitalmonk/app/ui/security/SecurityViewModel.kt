@@ -79,7 +79,16 @@ class SecurityViewModel(
     private val _showAppListDialog = MutableStateFlow(false)
     val showAppListDialog: StateFlow<Boolean> = _showAppListDialog.asStateFlow()
 
+    // ── App Protection Confirmation ──────────────────────────────────────────
+    data class AppConfirmData(
+        val packageName: String,
+        val type: AppProtectionType,
+        val appName: String
+    )
+    enum class AppProtectionType { UNINSTALL, FORCE_STOP }
 
+    private val _showAppConfirmDialog = MutableStateFlow<AppConfirmData?>(null)
+    val showAppConfirmDialog: StateFlow<AppConfirmData?> = _showAppConfirmDialog.asStateFlow()
 
     fun clearPrivateDnsError() {
         _privateDnsError.value = null
@@ -287,8 +296,55 @@ class SecurityViewModel(
         }
     }
 
-    // In SecurityViewModel.kt inside toggleUninstallProtection
     fun toggleUninstallProtection(packageName: String, blocked: Boolean) {
+        // 1. Check if settings are locked when trying to turn OFF
+        if (!blocked && prefsManager.isSettingsLocked) {
+            Toast.makeText(context, "Cannot disable protection while settings are locked.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 2. If turning ON, show confirmation dialog
+        if (blocked) {
+            val app = _installedApps.value.find { it.packageName == packageName }
+            _showAppConfirmDialog.value = AppConfirmData(packageName, AppProtectionType.UNINSTALL, app?.name ?: packageName)
+            return
+        }
+
+        // 3. Otherwise (turning OFF and not locked), proceed
+        executeToggleUninstall(packageName, false)
+    }
+
+    fun toggleForceStopProtection(packageName: String, blocked: Boolean) {
+        if (!blocked && prefsManager.isSettingsLocked) {
+            Toast.makeText(context, "Cannot disable protection while settings are locked.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (blocked) {
+            val app = _installedApps.value.find { it.packageName == packageName }
+            _showAppConfirmDialog.value = AppConfirmData(packageName, AppProtectionType.FORCE_STOP, app?.name ?: packageName)
+            return
+        }
+
+        executeToggleForceStop(packageName, false)
+    }
+
+    // --- Confirmation & Execution Helpers ---
+
+    fun confirmAppToggle() {
+        val data = _showAppConfirmDialog.value ?: return
+        _showAppConfirmDialog.value = null
+        when (data.type) {
+            AppProtectionType.UNINSTALL -> executeToggleUninstall(data.packageName, true)
+            AppProtectionType.FORCE_STOP -> executeToggleForceStop(data.packageName, true)
+        }
+    }
+
+    fun dismissAppConfirmDialog() {
+        _showAppConfirmDialog.value = null
+    }
+
+    private fun executeToggleUninstall(packageName: String, blocked: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val success = DevicePolicyHelper.setUninstallBlocked(context, packageName, blocked)
             withContext(Dispatchers.Main) {
@@ -297,17 +353,14 @@ class SecurityViewModel(
                         if (it.packageName == packageName) it.copy(isUninstallBlocked = blocked) else it
                     }
                     Toast.makeText(context, "Protection ${if (blocked) "Enabled" else "Disabled"} for $packageName", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "Failed to update protection. Is Device Owner active?", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
-    fun toggleForceStopProtection(packageName: String, blocked: Boolean) {
+    private fun executeToggleForceStop(packageName: String, blocked: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val currentList = DevicePolicyHelper.getControlDisabledPackages(context).toMutableList()
-
             if (blocked) {
                 if (!currentList.contains(packageName)) currentList.add(packageName)
             } else {

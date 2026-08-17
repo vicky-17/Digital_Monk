@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import com.digitalmonk.app.ui.components.dialogs.LockSettingsDialog
 import android.os.SystemClock
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.ui.draw.clip
 import com.digitalmonk.app.ui.components.cards.ActionCard
@@ -71,6 +72,7 @@ fun SecurityScreen(prefs: PrefsManager) {
     val isApplyingPrivateDns by viewModel.isApplyingPrivateDns.collectAsState()
     val privateDnsError by viewModel.privateDnsError.collectAsState()
     val isPrivateDnsLocked by viewModel.isPrivateDnsLocked.collectAsState()
+    val showAppConfirmDialog by viewModel.showAppConfirmDialog.collectAsState()
 
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
@@ -253,7 +255,7 @@ fun SecurityScreen(prefs: PrefsManager) {
 
     val showAppListDialog by viewModel.showAppListDialog.collectAsState()
     if (showAppListDialog) {
-        AppUninstallProtectionDialog(viewModel)
+        AppUninstallProtectionDialog(viewModel, prefs)
     }
 
     if (showDnsLockDialog) {
@@ -458,23 +460,56 @@ fun SecurityScreen(prefs: PrefsManager) {
             onDismiss = { showAntiUninstallPinDialog = false }
         )
     }
+    showAppConfirmDialog?.let { data ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissAppConfirmDialog() },
+            title = { Text("Enable Protection", color = Color.White) },
+            text = { Text("Enable protection for ${data.appName}? This prevents tampering until the lock expires.", color = Color(0xFF94A3B8)) },
+            containerColor = Color(0xFF0F172A),
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmAppToggle() }) { Text("Confirm", color = Color(0xFF3B82F6)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissAppConfirmDialog() }) { Text("Cancel", color = Color.White) }
+            }
+        )
+    }
 }
 
 
 
 @Composable
-private fun AppUninstallProtectionDialog(viewModel: SecurityViewModel) {
+private fun AppUninstallProtectionDialog(viewModel: SecurityViewModel, prefs: PrefsManager) {
     val apps by viewModel.installedApps.collectAsState()
     val isLoading by viewModel.isLoadingApps.collectAsState()
+    var showLockDialog by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = { viewModel.dismissAppListDialog() },
-        containerColor = Color(0xFF0F172A), // Match your dark theme
+        containerColor = Color(0xFF0F172A),
         title = {
-            Text("Uninstall Protection", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Uninstall Protection", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                IconButton(onClick = { showLockDialog = true }) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Rounded.Lock,
+                        contentDescription = "Lock Settings",
+                        tint = if (prefs.isSettingsLocked) Color(0xFF3B82F6) else Color.White
+                    )
+                }
+            }
         },
         text = {
             Column {
+                if (prefs.isSettingsLocked) {
+                    Text(
+                        "Locked for ${formatRemainingTime(prefs.lockUntil - System.currentTimeMillis())}",
+                        color = Color(0xFF3B82F6),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 Text(
                     "Selected apps cannot be uninstalled from this device settings.",
                     color = Color(0xFF94A3B8),
@@ -555,6 +590,31 @@ private fun AppUninstallProtectionDialog(viewModel: SecurityViewModel) {
             }
         }
     )
+    if (showLockDialog) {
+        LockSettingsDialog(
+            onConfirm = { durationMs ->
+                // Copy the logic from SecurityScreen.kt (line 300) here:
+                val now = System.currentTimeMillis()
+                prefs.lockDurationMs = durationMs
+                prefs.lockAnchorElapsed = SystemClock.elapsedRealtime()
+                prefs.lockUntil = now + durationMs
+                prefs.lastKnownDeviceTime = now
+                prefs.lockNtpOffset = Long.MIN_VALUE
+                showLockDialog = false
+
+                // Optional: Fetch NTP time for tamper-proofing
+                Thread {
+                    val ntpTime = com.digitalmonk.app.core.utils.NtpFetcher.fetchNtpTime()
+                    if (ntpTime > 0) {
+                        val offset = ntpTime - System.currentTimeMillis()
+                        prefs.lockNtpOffset = offset
+                        prefs.lockUntil = ntpTime + durationMs
+                    }
+                }.start()
+            },
+            onDismiss = { showLockDialog = false }
+        )
+    }
 }
 
 @Composable
