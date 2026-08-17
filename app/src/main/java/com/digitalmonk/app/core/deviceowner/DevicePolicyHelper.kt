@@ -232,7 +232,7 @@ object DevicePolicyHelper {
         if (!dpm.isDeviceOwnerApp(context.packageName)) return false
 
         return try {
-            dpm.setControlDisabledPackages(adminComponent, packages)
+            dpm.setUserControlDisabledPackages(adminComponent, packages)
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set control disabled packages", e)
@@ -250,7 +250,7 @@ object DevicePolicyHelper {
         if (!dpm.isDeviceOwnerApp(context.packageName)) return emptyList()
 
         return try {
-            dpm.getControlDisabledPackages(adminComponent)
+            dpm.getUserControlDisabledPackages(adminComponent)
         } catch (e: Exception) {
             emptyList()
         }
