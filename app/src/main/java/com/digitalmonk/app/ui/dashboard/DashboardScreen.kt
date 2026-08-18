@@ -40,7 +40,6 @@ fun DashboardScreen(
     prefs: PrefsManager,
     refreshKey: Long,
     onRefresh: () -> Unit,
-    onChangePinClick: () -> Unit       // passed from MainActivity since PinSetupActivity needs Activity context
 ) {
     val context = LocalContext.current
     var safeSearchEnabled by remember { mutableStateOf(prefs.isSafeSearchEnabled) }
@@ -139,18 +138,6 @@ fun DashboardScreen(
         )
 
         Spacer(modifier = Modifier.height(24.dp))
-
-        SectionLabel("Security")
-        Spacer(modifier = Modifier.height(8.dp))
-
-        DashboardActionCard(
-            title = "Change PIN",
-            description = "Update your parent access PIN",
-            emoji = "🔑",
-            onClick = onChangePinClick
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
 
         DashboardActionCard(
             title = "Lockdown VPN (Prevent Bypass)",

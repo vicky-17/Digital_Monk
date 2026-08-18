@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.digitalmonk.app.ui.components.common.SectionLabel
 import com.digitalmonk.app.ui.theme.DigitalMonkTheme
+import androidx.compose.material.icons.rounded.Lock
 
 // Reusable local palette variables to sync with your main dashboard skin theme[cite: 1]
 private val BgDeep      = Color(0xFF080E1A) // Matches MainActivity theme background[cite: 1]
@@ -31,8 +32,9 @@ private val TextSecond  = Color(0xFF64748B) // Subtitle text layer[cite: 1]
 
 @Composable
 fun SettingsScreen(
-    onNavigateToPermissions: () -> Unit
-) {
+    onNavigateToPermissions: () -> Unit,
+    onChangePinClick: () -> Unit
+){
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -52,7 +54,16 @@ fun SettingsScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        // You can comfortably append theme selectors or device info profiles below later[cite: 1]
+
+    SectionLabel("Security")
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SettingsNavigationCard(
+                    title = "Change PIN",
+                    description = "Update your parent access PIN",
+                    icon = Icons.Rounded.Lock,
+                    onClick = onChangePinClick
+                        )
     }
 }
 
@@ -121,6 +132,9 @@ fun SettingsNavigationCard(
 fun SettingsScreenPreview() {
     DigitalMonkTheme {
         // We pass an empty lambda block '{}' to fulfill the callback requirement for preview layout stability[cite: 1]
-        SettingsScreen(onNavigateToPermissions = {})
+        SettingsScreen(
+            onNavigateToPermissions = {},
+            onChangePinClick = {}
+        )
     }
 }

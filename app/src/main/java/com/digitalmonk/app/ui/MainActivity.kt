@@ -332,17 +332,15 @@ class MainActivity : BaseActivity() {
                                         prefs           = prefs,
                                         refreshKey      = refreshKey,
                                         onRefresh       = { refreshKey = System.currentTimeMillis() },
-                                        onChangePinClick = {
-                                            startActivity(Intent(this@MainActivity, PinSetupActivity::class.java))
-                                        }
                                     )
                                     Screen.LOCKS    -> LocksScreen(prefs = prefs)
                                     Screen.SECURITY -> SecurityScreen(prefs = prefs)
                                     Screen.SETTINGS -> SettingsScreen(
-                                        // Flip destination → Compose discards the Scaffold tree
-                                        // and only renders PermissionsScreen in its place
                                         onNavigateToPermissions = {
                                             destination = AppDestination.Permissions
+                                        },
+                                        onChangePinClick = {
+                                            startActivity(Intent(this@MainActivity, PinSetupActivity::class.java))
                                         }
                                     )
                                 }
