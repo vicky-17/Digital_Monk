@@ -8,12 +8,14 @@ import com.digitalmonk.app.core.utils.UiDumper.dumpAll
 import com.digitalmonk.app.data.local.prefs.PrefsManager
 import com.digitalmonk.app.service.accessibility.handlers.AppBlockHandler
 import com.digitalmonk.app.service.accessibility.handlers.ShortsBlockHandler
+import com.digitalmonk.app.service.monitor.AppUsageTracker
 import kotlin.concurrent.Volatile
 
 class GuardianAccessibilityService : AccessibilityService() {
     private var prefs: PrefsManager? = null
     private var shortsBlockHandler: ShortsBlockHandler? = null
     private var appBlockHandler: AppBlockHandler? = null
+    private var appUsageTracker: AppUsageTracker? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -25,6 +27,8 @@ class GuardianAccessibilityService : AccessibilityService() {
         appBlockHandler = AppBlockHandler(
             prefs!!,
             AppBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
+        appUsageTracker = AppUsageTracker()
+        appUsageTracker?.setup(this)
         serviceConnectedTimestamp = System.currentTimeMillis()
         lastEventTimestamp = 0L
         Log.i(TAG, "Guardian accessibility service connected")
@@ -37,6 +41,8 @@ class GuardianAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        appUsageTracker?.onDestroy()
+        appUsageTracker = null
         instance = null
         Log.w(TAG, "Service destroyed")
     }
@@ -44,6 +50,7 @@ class GuardianAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         lastEventTimestamp = System.currentTimeMillis()
         if (event == null) return
+        appUsageTracker?.onEvent(event)
         val eventType = event.getEventType()
         val pkgSeq = event.getPackageName()
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSeq != null) {

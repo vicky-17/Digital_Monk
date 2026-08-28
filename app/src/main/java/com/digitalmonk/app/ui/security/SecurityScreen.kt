@@ -95,13 +95,26 @@ fun SecurityScreen(prefs: PrefsManager) {
     var showDnsLockDialog by remember { mutableStateOf(false) }
 
     // ── UI ────────────────────────────────────────────────────────────────────
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(ScreenBg)
-            .verticalScroll(rememberScrollState())
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF04040c), // BgDeep
+                        Color(0xFF080B1A), // Deep subtle tint
+                        Color(0xFF04040c)
+                    )
+                )
+            )
     ) {
-        SecurityScreenHeader()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
+        // Removed SecurityScreenHeader() to use global Digital Monk header
 
         Spacer(Modifier.height(8.dp))
 
@@ -514,6 +527,7 @@ fun SecurityScreen(prefs: PrefsManager) {
             }
         )
     }
+}
 }
 
 

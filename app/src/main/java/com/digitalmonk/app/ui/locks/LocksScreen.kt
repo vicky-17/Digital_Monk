@@ -1,10 +1,13 @@
 package com.digitalmonk.app.ui.locks
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,11 +24,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.unit.sp
 import com.digitalmonk.app.data.local.prefs.PrefsManager
 import com.digitalmonk.app.data.local.db.AppDatabase // Add this
@@ -35,6 +42,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import coil.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+import java.text.SimpleDateFormat
+import java.util.*
 
 // ── Color palette ─────────────────────────────────────────────────────────────
 private val ScreenBg   = Color(0xFF080E1A)
@@ -62,6 +72,10 @@ fun LocksScreen(prefs: PrefsManager) {
     val wizardState by viewModel.wizardState.collectAsState()
     val websites by viewModel.blockedWebsites.collectAsState()
 
+    val groupedRules by remember(activeRules) {
+        derivedStateOf { activeRules.groupBy { it.planName.ifBlank { "Unnamed Plan" } } }
+    }
+
     var showWizard by remember { mutableStateOf(value = false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -69,43 +83,29 @@ fun LocksScreen(prefs: PrefsManager) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Apps", "Websites")
 
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ScreenBg),
+            .background(ScreenBg)
+            .padding(bottom = 24.dp),
     ) {
-        LocksHeader()
+        // Removed LocksHeader() to use global Digital Monk header
 
-        // ── Tabs ──────────────────────────────────────────────────────────────
-        PrimaryTabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = ScreenBg,
-            contentColor = AccentCyan,
-            divider = {},
-            indicator = {
-                TabRowDefaults.PrimaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(selectedTab),
-                    color = AccentCyan,
-                    width = 60.dp,
-                )
-            }
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title, fontSize = 14.sp) }
-                )
-            }
-        }
+        Spacer(Modifier.height(14.dp))
 
-        Spacer(Modifier.height(8.dp))
+        // ── Apps/Websites Tabs (Liquid Glass) ─────────────────────────────────
+        GlassTabs(
+            tabs = tabs,
+            selectedTab = selectedTab,
+            onTabSelected = { selectedTab = it }
+        )
+
+        Spacer(Modifier.height(20.dp))
 
         Box(modifier = Modifier.fillMaxSize()) {
             if (selectedTab == 0) {
                 // ── Apps Tab (Active Plans) ──────────────────────────────────
-                if (activeRules.isEmpty()) {
+                if (groupedRules.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Rounded.Lock, contentDescription = null, tint = TextSecond, modifier = Modifier.size(48.dp))
@@ -117,12 +117,15 @@ fun LocksScreen(prefs: PrefsManager) {
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 80.dp, top = 8.dp)
                     ) {
-                        items(activeRules, key = { it.packageName }) { rule ->
-                            ActiveRuleItem(rule = rule) {
-                                viewModel.removeRule(rule.packageName)
-                            }
+                        items(groupedRules.keys.toList(), key = { it }) { planName ->
+                            val rules = groupedRules[planName] ?: emptyList()
+                            ActivePlanCard(
+                                planName = planName,
+                                rules = rules,
+                                onDelete = { viewModel.removePlan(planName) }
+                            )
                         }
                     }
                 }
@@ -169,21 +172,21 @@ fun LocksScreen(prefs: PrefsManager) {
                 }
             }
         }
-    }
 
-    if (showWizard) {
-        ModalBottomSheet(
-            onDismissRequest = { showWizard = false },
-            sheetState = sheetState,
-            containerColor = ScreenBg,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = TextSecond.copy(alpha = 0.5f)) }
-        ) {
-            AppBlockWizard(
-                state = wizardState,
-                viewModel = viewModel
+        if (showWizard) {
+            ModalBottomSheet(
+                onDismissRequest = { showWizard = false },
+                sheetState = sheetState,
+                containerColor = ScreenBg,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = TextSecond.copy(alpha = 0.5f)) }
             ) {
-                scope.launch { sheetState.hide() }.invokeOnCompletion {
-                    showWizard = false
+                AppBlockWizard(
+                    state = wizardState,
+                    viewModel = viewModel
+                ) {
+                    scope.launch { sheetState.hide() }.invokeOnCompletion {
+                        showWizard = false
+                    }
                 }
             }
         }
@@ -191,58 +194,196 @@ fun LocksScreen(prefs: PrefsManager) {
 }
 
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ActiveRuleItem(rule: AppBlockRule, onDelete: () -> Unit) {
+private fun ActivePlanCard(planName: String, rules: List<AppBlockRule>, onDelete: () -> Unit) {
+    val firstRule = rules.firstOrNull() ?: return
+    var isExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBg),
-        shape = RoundedCornerShape(16.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp))
+            .clickable { isExpanded = !isExpanded },
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.07f)),
+        shape = RoundedCornerShape(22.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(AccentCyan.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = when(rule.planType) {
-                        "STAY_FOCUSED" -> Icons.Rounded.Block
-                        "TIME_LIMIT" -> Icons.Rounded.HourglassEmpty
-                        "HABIT_TRAINING" -> Icons.Rounded.Repeat
-                        else -> Icons.Rounded.Coffee
-                    },
-                    contentDescription = null,
-                    tint = AccentCyan,
-                    modifier = Modifier.size(20.dp)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(AccentCyan.copy(alpha = 0.1f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = when(firstRule.planType) {
+                            "STAY_FOCUSED" -> Icons.Rounded.Bolt
+                            "TIME_LIMIT" -> Icons.Rounded.Timer
+                            "HABIT_TRAINING" -> Icons.Rounded.Psychology
+                            else -> Icons.Rounded.Coffee
+                        },
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(planName, color = TextPrimary, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    val strategyLabel = firstRule.planType.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+                    Text(strategyLabel, color = AccentCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.background(AccentRed.copy(alpha = 0.1f), CircleShape).size(32.dp)
+                ) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "Delete", tint = AccentRed, modifier = Modifier.size(16.dp))
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Apps Preview (Stacked Icons)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Box(modifier = Modifier.padding(start = 8.dp)) {
+                    val displayCount = 4
+                    rules.take(displayCount).forEachIndexed { index, rule ->
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (index * 20).dp)
+                                .size(32.dp)
+                                .background(CardBg, CircleShape)
+                                .border(2.dp, CardBg, CircleShape)
+                                .padding(2.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.05f))
+                        ) {
+                            val icon = remember(rule.packageName) {
+                                try {
+                                    context.packageManager.getApplicationIcon(rule.packageName)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+                            Image(
+                                painter = rememberAsyncImagePainter(icon),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    
+                    if (rules.size > displayCount) {
+                        Box(
+                            modifier = Modifier
+                                .offset(x = (displayCount * 20).dp)
+                                .size(32.dp)
+                                .background(AccentCyan, CircleShape)
+                                .border(2.dp, CardBg, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+${rules.size - displayCount}",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = if (isExpanded) "Hide details" else "View ${rules.size} apps",
+                    color = AccentCyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(end = 4.dp)
                 )
             }
 
-            Spacer(Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(rule.appName, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                val detailText = when(rule.planType) {
-                    "STAY_FOCUSED" -> "Always Blocked"
-                    "TIME_LIMIT" -> "${rule.allowedMinutes}m limit / ${rule.intervalMinutes}m"
-                    "HABIT_TRAINING" -> "${rule.maxLaunches} launches max"
-                    else -> "Screen Breaks active"
+            // Expanded Apps List
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rules.forEach { rule ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val icon = remember(rule.packageName) {
+                                try {
+                                    context.packageManager.getApplicationIcon(rule.packageName)
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+                            Image(
+                                painter = rememberAsyncImagePainter(icon),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(rule.appName, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.weight(1f))
+                            Text(rule.packageName.split(".").lastOrNull() ?: "", color = TextSecond, fontSize = 10.sp)
+                        }
+                    }
                 }
-                Text(detailText, color = TextSecond, fontSize = 12.sp)
             }
-
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Rounded.Delete, contentDescription = "Remove", tint = AccentRed.copy(alpha = 0.6f))
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Timing Info
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(ScreenBg.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.History, null, tint = TextSecond, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(8.dp))
+                val timingText = when(firstRule.timingMode) {
+                    "MULTI_DAY" -> {
+                        val dateStr = remember(firstRule.expiryTimestamp) {
+                            SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(firstRule.expiryTimestamp))
+                        }
+                        "Ends $dateStr"
+                    }
+                    "WEEKLY" -> "Recurring weekly"
+                    else -> "Active on-demand"
+                }
+                Text(timingText, color = TextSecond, fontSize = 11.sp)
             }
         }
     }
 }
+
+
 
 @Composable
 fun AppBlockWizard(
@@ -288,9 +429,8 @@ fun AppBlockWizard(
                         1 -> "Choose Strategy"
                         2 -> "Target Apps"
                         3 -> "Trigger Mode"
-                        4 -> "Configuration"
-                        5 -> "Security"
-                        6 -> "Final Review"
+                        4 -> "Security"
+                        5 -> "Final Review"
                         else -> "Set up Plan"
                     }
                     Text(
@@ -300,7 +440,7 @@ fun AppBlockWizard(
                         fontSize = 18.sp
                     )
                     Text(
-                        text = "Step ${state.currentStep} of 6",
+                        text = "Step ${state.currentStep} of 5",
                         color = TextSecond,
                         fontSize = 11.sp
                     )
@@ -327,7 +467,7 @@ fun AppBlockWizard(
 
             // Progress Bar
             LinearProgressIndicator(
-                progress = { state.currentStep / 6f },
+                progress = { state.currentStep / 5f },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)
@@ -354,9 +494,8 @@ fun AppBlockWizard(
                     1 -> Step1PlanType(state, viewModel)
                     2 -> Step2Applications(viewModel)
                     3 -> Step3TimingMode(state, viewModel)
-                    4 -> Step4TimingDetails(state, viewModel)
-                    5 -> Step5Protection(state, viewModel)
-                    6 -> Step6Review(state, viewModel)
+                    4 -> Step5Protection(state, viewModel)
+                    5 -> Step6Review(state, viewModel)
                 }
             }
         }
@@ -369,7 +508,7 @@ fun AppBlockWizard(
         ) {
             Row(
                 modifier = Modifier
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
+                    .padding(horizontal = 24.dp, vertical = 10.dp)
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -389,14 +528,14 @@ fun AppBlockWizard(
                 }
 
                 Button(
-                    onClick = { if (state.currentStep < 6) viewModel.nextStep() else { viewModel.saveWizardPlan(); onDismiss() } },
+                    onClick = { if (state.currentStep < 5) viewModel.nextStep() else { viewModel.saveWizardPlan(); onDismiss() } },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.height(48.dp).padding(horizontal = 4.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                 ) {
-                    Text(if (state.currentStep < 6) "Next" else "Finish", fontWeight = FontWeight.Bold)
-                    if (state.currentStep < 6) {
+                    Text(if (state.currentStep < 5) "Next" else "Finish", fontWeight = FontWeight.Bold)
+                    if (state.currentStep < 5) {
                         Spacer(Modifier.width(8.dp))
                         Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
                     }
@@ -441,49 +580,136 @@ private fun Step1PlanType(state: WizardState, viewModel: LocksViewModel) {
                 ),
                 shape = RoundedCornerShape(20.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                if (isSelected) AccentCyan else TextSecond.copy(alpha = 0.1f),
-                                RoundedCornerShape(12.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                Column {
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = plan.icon,
-                            contentDescription = null,
-                            tint = if (isSelected) Color.White else TextSecond,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    if (isSelected) AccentCyan else TextSecond.copy(alpha = 0.1f),
+                                    RoundedCornerShape(12.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = plan.icon,
+                                contentDescription = null,
+                                tint = if (isSelected) Color.White else TextSecond,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.width(16.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = plan.name,
+                                color = if (isSelected) AccentCyan else TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = plan.desc,
+                                color = TextSecond,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = AccentCyan
+                            )
+                        }
                     }
 
-                    Spacer(Modifier.width(16.dp))
+                    // Configuration expansion for specific types
+                    AnimatedVisibility(
+                        visible = isSelected && (plan.type == "TIME_LIMIT" || plan.type == "HABIT_TRAINING"),
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
+                        ) {
+                            HorizontalDivider(
+                                color = TextSecond.copy(alpha = 0.1f),
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
 
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = plan.name,
-                            color = if (isSelected) AccentCyan else TextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                        Text(
-                            text = plan.desc,
-                            color = TextSecond,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = null,
-                            tint = AccentCyan
-                        )
+                            if (plan.type == "TIME_LIMIT") {
+                                val currentHours = state.allowedMinutes / 60
+                                val currentMins = state.allowedMinutes % 60
+                                
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Daily Limit", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text(
+                                            text = if (currentHours > 0) "${currentHours}h ${currentMins}m" else "${currentMins}m",
+                                            color = AccentCyan,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        WizardStepper(
+                                            label = "Hours",
+                                            value = currentHours,
+                                            unit = "h",
+                                            modifier = Modifier.weight(1f),
+                                            onValueChange = { delta ->
+                                                viewModel.updateWizard { it.copy(allowedMinutes = (it.allowedMinutes + delta * 60).coerceAtLeast(0)) }
+                                            }
+                                        )
+                                        WizardStepper(
+                                            label = "Minutes",
+                                            value = currentMins,
+                                            unit = "m",
+                                            modifier = Modifier.weight(1f),
+                                            onValueChange = { delta ->
+                                                viewModel.updateWizard { it.copy(allowedMinutes = (it.allowedMinutes + delta).coerceAtLeast(0)) }
+                                            }
+                                        )
+                                    }
+                                }
+                            } else if (plan.type == "HABIT_TRAINING") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        "Max Launches",
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                    WizardStepper(
+                                        label = "",
+                                        value = state.maxLaunches,
+                                        unit = "x",
+                                        modifier = Modifier.width(110.dp),
+                                        onValueChange = { delta ->
+                                            viewModel.updateWizard { it.copy(maxLaunches = (it.maxLaunches + delta).coerceAtLeast(0)) }
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -497,13 +723,12 @@ private data class PlanItem(val name: String, val desc: String, val type: String
 private fun Step2Applications(viewModel: LocksViewModel) {
     val apps by viewModel.selectableApps.collectAsState()
     val wizardState by viewModel.wizardState.collectAsState()
-    val searchQuery by viewModel.searchQuery.collectAsState()
     val isDataLoading by viewModel.isAppsLoading.collectAsState()
 
     // Local state to force at least 2 seconds of loading animation when entering this step
     var isAnimationRunning by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(2000)
+        kotlinx.coroutines.delay(2000.milliseconds)
         isAnimationRunning = false
     }
 
@@ -511,21 +736,6 @@ private fun Step2Applications(viewModel: LocksViewModel) {
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Text("Select the apps you want to restrict.", fontSize = 14.sp, color = TextSecond)
-
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { viewModel.onSearchQueryChange(it) },
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-            placeholder = { Text("Search apps...", color = TextSecond) },
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null, tint = AccentCyan) },
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentCyan,
-                unfocusedBorderColor = TextSecond.copy(alpha = 0.2f),
-                focusedContainerColor = CardBg,
-                unfocusedContainerColor = CardBg
-            )
-        )
 
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -536,67 +746,109 @@ private fun Step2Applications(viewModel: LocksViewModel) {
                 }
             }
         } else {
+            val selectedApps = apps.filter { wizardState.selectedPackages.contains(it.packageName) }
+            val socialApps = apps.filter { it.isSocial && !wizardState.selectedPackages.contains(it.packageName) }
+            val otherApps = apps.filter { !it.isSocial && !wizardState.selectedPackages.contains(it.packageName) }
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(apps) { app ->
-                    val isSelected = wizardState.selectedPackages.contains(app.packageName)
-                    Card(
-                        onClick = { viewModel.toggleAppSelection(app.packageName) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) AccentCyan.copy(alpha = 0.08f) else Color.Transparent
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        border = if (isSelected) BorderStroke(1.dp, AccentCyan.copy(alpha = 0.3f)) else null
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Icon on Left
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(app.icon),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                            
-                            Spacer(Modifier.width(16.dp))
+                // ── Selected Apps Section ──────────────────────────────────
+                if (selectedApps.isNotEmpty()) {
+                    item { AppSectionHeader("Selected Apps", selectedApps.size) }
+                    items(selectedApps, key = { "selected_${it.packageName}" }) { app ->
+                        AppSelectorItem(app, true, viewModel)
+                    }
+                }
 
-                            // Name and Package in Center
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = app.name,
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
-                                Text(
-                                    text = app.packageName,
-                                    color = TextSecond,
-                                    fontSize = 11.sp
-                                )
-                            }
+                // ── Social Media Recommendations ────────────────────────────
+                if (socialApps.isNotEmpty()) {
+                    item { AppSectionHeader("Recommended (Social Media)", socialApps.size) }
+                    items(socialApps, key = { "social_${it.packageName}" }) { app ->
+                        AppSelectorItem(app, false, viewModel)
+                    }
+                }
 
-                            // Checkbox on Right
-                            Checkbox(
-                                checked = isSelected,
-                                onCheckedChange = { viewModel.toggleAppSelection(app.packageName) },
-                                colors = CheckboxDefaults.colors(checkedColor = AccentCyan)
-                            )
-                        }
+                // ── All Other Apps ──────────────────────────────────────────
+                if (otherApps.isNotEmpty()) {
+                    item { AppSectionHeader("All Apps", otherApps.size) }
+                    items(otherApps, key = { "other_${it.packageName}" }) { app ->
+                        AppSelectorItem(app, false, viewModel)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AppSectionHeader(title: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title.uppercase(),
+            color = AccentCyan,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 1.sp
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .background(AccentCyan.copy(alpha = 0.1f), CircleShape)
+                .padding(horizontal = 8.dp, vertical = 2.dp)
+        ) {
+            Text(count.toString(), color = AccentCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun AppSelectorItem(app: com.digitalmonk.app.ui.locks.AppItem, isSelected: Boolean, viewModel: LocksViewModel) {
+    Card(
+        onClick = { viewModel.toggleAppSelection(app.packageName) },
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) AccentCyan.copy(alpha = 0.08f) else Color.Transparent
+        ),
+        shape = RoundedCornerShape(12.dp),
+        border = if (isSelected) BorderStroke(1.dp, AccentCyan.copy(alpha = 0.3f)) else null
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = rememberAsyncImagePainter(app.icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            
+            Spacer(Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(app.name, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(app.packageName, color = TextSecond, fontSize = 11.sp)
+            }
+
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { viewModel.toggleAppSelection(app.packageName) },
+                colors = CheckboxDefaults.colors(checkedColor = AccentCyan)
+            )
         }
     }
 }
@@ -701,7 +953,181 @@ private fun Step3TimingMode(state: WizardState, viewModel: LocksViewModel) {
                             }
                         }
                     }
+
+
+                    // Expand if Multi-Day Plan is selected
+
+                    AnimatedVisibility(
+                        visible = isSelected && mode.type == "MULTI_DAY",
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 20.dp, end = 0.dp, top = 10.dp, bottom = 10.dp)
+                        ) {
+                            HorizontalDivider(color = TextSecond.copy(alpha = 0.1f), modifier = Modifier.padding(bottom = 16.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+
+                                Text(
+                                    text = "Choose how many days to block from today",
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+
+                                // Day Counter on Right
+                                Box(
+                                    modifier = Modifier
+                                        .width(50.dp) // Narrower for right side
+                                        .height(90.dp), // Tighter height to show 3 numbers
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (state.multiDayCount - 1).coerceAtLeast(0))
+                                    
+                                    val centerIndex by remember {
+                                        derivedStateOf {
+                                            val layoutInfo = listState.layoutInfo
+                                            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+                                            if (visibleItemsInfo.isEmpty()) 0
+                                            else {
+                                                val center = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                                                visibleItemsInfo.minByOrNull { 
+                                                    kotlin.math.abs((it.offset + it.size / 2) - center) 
+                                                }?.index ?: 0
+                                            }
+                                        }
+                                    }
+
+                                    LaunchedEffect(centerIndex) {
+                                        viewModel.updateWizard { it.copy(multiDayCount = centerIndex + 1) }
+                                    }
+
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(vertical = 30.dp), // Adjusted for 3-item visibility
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
+                                    ) {
+                                        items(60) { index ->
+                                            val day = index + 1
+                                            val isCurrent = centerIndex == index
+                                            
+                                            Text(
+                                                text = day.toString(),
+                                                color = if (isCurrent) AccentCyan else TextPrimary.copy(alpha = 0.15f),
+                                                fontSize = if (isCurrent) 28.sp else 18.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Black else FontWeight.Medium,
+                                                modifier = Modifier.padding(vertical = 1.dp) // Minimum padding
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.width(20.dp))
+                            }
+                        }
+                    }
+
+                    // Expand if Pomodoro is selected
+                    AnimatedVisibility(
+                        visible = isSelected && mode.type == "POMODORO",
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
+                        ) {
+                            HorizontalDivider(color = TextSecond.copy(alpha = 0.1f), modifier = Modifier.padding(bottom = 16.dp))
+                            
+                            Text("Cycle Configuration", color = AccentCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(12.dp))
+                            
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                WizardStepper(
+                                    label = "Focus",
+                                    value = state.pomodoroFocus,
+                                    unit = "m",
+                                    modifier = Modifier.weight(1f),
+                                    onValueChange = { delta -> viewModel.updateWizard { it.copy(pomodoroFocus = it.pomodoroFocus + delta) } }
+                                )
+                                WizardStepper(
+                                    label = "Break",
+                                    value = state.pomodoroShortBreak,
+                                    unit = "m",
+                                    modifier = Modifier.weight(1f),
+                                    onValueChange = { delta -> viewModel.updateWizard { it.copy(pomodoroShortBreak = it.pomodoroShortBreak + delta) } }
+                                )
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                WizardStepper(
+                                    label = "Long Break",
+                                    value = state.pomodoroLongBreak,
+                                    unit = "m",
+                                    modifier = Modifier.weight(1f),
+                                    onValueChange = { delta -> viewModel.updateWizard { it.copy(pomodoroLongBreak = it.pomodoroLongBreak + delta) } }
+                                )
+                                WizardStepper(
+                                    label = "Sets",
+                                    value = state.pomodoroCycles,
+                                    unit = "x",
+                                    modifier = Modifier.weight(1f),
+                                    onValueChange = { delta -> viewModel.updateWizard { it.copy(pomodoroCycles = it.pomodoroCycles + delta) } }
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WizardStepper(
+    label: String,
+    value: Int,
+    unit: String,
+    modifier: Modifier = Modifier,
+    onValueChange: (Int) -> Unit
+) {
+    Column(modifier = modifier) {
+        if (label.isNotEmpty()) {
+            Text(label, color = TextSecond, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(CardBg.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            IconButton(
+                onClick = { if (value > 0) onValueChange(-1) }, 
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(Icons.Rounded.Remove, null, tint = TextSecond, modifier = Modifier.size(16.dp))
+            }
+            Text("$value$unit", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            IconButton(
+                onClick = { onValueChange(1) }, 
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(Icons.Rounded.Add, null, tint = AccentCyan, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -709,93 +1135,6 @@ private fun Step3TimingMode(state: WizardState, viewModel: LocksViewModel) {
 
 private data class TimingModeItem(val title: String, val desc: String, val type: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
-@Composable
-private fun Step4TimingDetails(state: WizardState, viewModel: LocksViewModel) {
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp).verticalScroll(rememberScrollState())) {
-        Text("Fine-tune how your strategy works.", fontSize = 14.sp, color = TextSecond)
-
-        Spacer(Modifier.height(32.dp))
-
-        when (state.planType) {
-            "TIME_LIMIT" -> {
-                Text("Daily Time Budget", color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Spacer(Modifier.height(12.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Schedule, null, tint = AccentCyan)
-                        Spacer(Modifier.width(16.dp))
-                        Text("Minutes per day", color = TextPrimary, modifier = Modifier.weight(1f))
-                        
-                        TextField(
-                            value = state.allowedMinutes.toString(),
-                            onValueChange = { newValue -> 
-                                viewModel.updateWizard { it.copy(allowedMinutes = newValue.toIntOrNull() ?: 0) }
-                            },
-                            modifier = Modifier.width(70.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = AccentCyan
-                            ),
-                            singleLine = true
-                        )
-                    }
-                }
-            }
-            "HABIT_TRAINING" -> {
-                Text("Launch Restrictions", color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Spacer(Modifier.height(12.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = CardBg),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.RestartAlt, null, tint = AccentCyan)
-                        Spacer(Modifier.width(16.dp))
-                        Text("Max launches", color = TextPrimary, modifier = Modifier.weight(1f))
-                        
-                        TextField(
-                            value = state.maxLaunches.toString(),
-                            onValueChange = { newValue -> 
-                                viewModel.updateWizard { it.copy(maxLaunches = newValue.toIntOrNull() ?: 0) }
-                            },
-                            modifier = Modifier.width(70.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center, fontWeight = FontWeight.Bold),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = AccentCyan
-                            ),
-                            singleLine = true
-                        )
-                    }
-                }
-            }
-            else -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "No extra configuration needed for\n${state.planType.lowercase().replace("_", " ")}.",
-                        color = TextSecond,
-                        textAlign = TextAlign.Center,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun Step5Protection(state: WizardState, viewModel: LocksViewModel) {
@@ -804,41 +1143,14 @@ private fun Step5Protection(state: WizardState, viewModel: LocksViewModel) {
 
         Spacer(Modifier.height(24.dp))
 
-        // Anti-Uninstall Toggle
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = CardBg),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, if (state.isAntiUninstall) AccentCyan.copy(alpha = 0.4f) else Color.Transparent)
-        ) {
-            Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(40.dp).background(AccentCyan.copy(alpha = 0.1f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.Shield, null, tint = AccentCyan, modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Anti-Uninstall", color = TextPrimary, fontWeight = FontWeight.Bold)
-                    Text("Prevent app deletion.", color = TextSecond, fontSize = 12.sp)
-                }
-                Switch(
-                    checked = state.isAntiUninstall,
-                    onCheckedChange = { newValue -> viewModel.updateWizard { it.copy(isAntiUninstall = newValue) } },
-                    colors = SwitchDefaults.colors(checkedTrackColor = AccentCyan)
-                )
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
         Text("Challenge to Exit", color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Spacer(Modifier.height(12.dp))
 
         val challenges = listOf(
             Triple("None", "Exit freely anytime.", "NONE"),
             Triple("Random Text", "Type random characters to exit.", "RANDOM_CHARS"),
-            Triple("Fixed PIN", "Enter your security PIN.", "PIN")
+            Triple("Fixed PIN", "Enter your security PIN.", "PIN"),
+            Triple("Enforced", "Cannot stop plan or remove until it ends.", "ENFORCED")
         )
 
         challenges.forEach { (title, desc, challenge) ->
@@ -854,16 +1166,79 @@ private fun Step5Protection(state: WizardState, viewModel: LocksViewModel) {
                 shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(1.dp, if (isSelected) AccentCyan else TextSecond.copy(alpha = 0.05f))
             ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = { viewModel.updateWizard { it.copy(stopChallenge = challenge) } },
-                        colors = RadioButtonDefaults.colors(selectedColor = AccentCyan)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(desc, color = TextSecond, fontSize = 11.sp)
+                Column {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { viewModel.updateWizard { it.copy(stopChallenge = challenge) } },
+                            colors = RadioButtonDefaults.colors(selectedColor = AccentCyan)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(desc, color = TextSecond, fontSize = 11.sp)
+                        }
+                    }
+
+                    if (isSelected && challenge == "ENFORCED") {
+                        var showDatePicker by remember { mutableStateOf(false) }
+                        val datePickerState = rememberDatePickerState(
+                            selectableDates = object : SelectableDates {
+                                override fun isSelectableDate(utcTimeMillis: Long): Boolean {
+                                    // Only allow selecting dates from tomorrow onwards
+                                    val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+                                    calendar.set(Calendar.HOUR_OF_DAY, 0)
+                                    calendar.set(Calendar.MINUTE, 0)
+                                    calendar.set(Calendar.SECOND, 0)
+                                    calendar.set(Calendar.MILLISECOND, 0)
+                                    val startOfToday = calendar.timeInMillis
+                                    return utcTimeMillis > startOfToday
+                                }
+                            }
+                        )
+
+                        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
+                            HorizontalDivider(color = TextSecond.copy(alpha = 0.1f), modifier = Modifier.padding(bottom = 12.dp))
+                            
+                            OutlinedCard(
+                                onClick = { showDatePicker = true },
+                                colors = CardDefaults.cardColors(containerColor = ScreenBg.copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.3f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Rounded.CalendarToday, null, tint = AccentCyan, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    val dateText = state.enforcedEndDate?.let {
+                                        SimpleDateFormat("EEE, MMM dd, yyyy", Locale.getDefault()).format(Date(it))
+                                    } ?: "Select End Date"
+                                    Text(dateText, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = TextSecond, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+
+                        if (showDatePicker) {
+                            DatePickerDialog(
+                                onDismissRequest = { showDatePicker = false },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        viewModel.updateWizard { it.copy(enforcedEndDate = datePickerState.selectedDateMillis) }
+                                        showDatePicker = false
+                                    }) { Text("Confirm", color = AccentCyan) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                                },
+                                colors = DatePickerDefaults.colors(containerColor = CardBg)
+                            ) {
+                                DatePicker(state = datePickerState)
+                            }
+                        }
                     }
                 }
             }
@@ -912,8 +1287,22 @@ private fun Step6Review(state: WizardState, viewModel: LocksViewModel) {
                 
                 SummaryRow("Strategy", state.planType.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() })
                 SummaryRow("Apps", "${state.selectedPackages.size} Selected")
-                SummaryRow("Timing", state.timingMode.lowercase().replaceFirstChar { it.uppercase() })
+                
+                val timingValue = when(state.timingMode) {
+                    "WEEKLY" -> "${state.selectedDays.size} days/week"
+                    "MULTI_DAY" -> "Next ${state.multiDayCount} days"
+                    else -> state.timingMode.lowercase().replaceFirstChar { it.uppercase() }
+                }
+                SummaryRow("Timing", timingValue)
+                
                 SummaryRow("Protection", state.stopChallenge.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() })
+
+                if (state.stopChallenge == "ENFORCED" && state.enforcedEndDate != null) {
+                    val dateStr = remember(state.enforcedEndDate) {
+                        SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(state.enforcedEndDate))
+                    }
+                    SummaryRow("Enforced Until", dateStr)
+                }
             }
         }
 
@@ -929,6 +1318,74 @@ private fun SummaryRow(label: String, value: String) {
     ) {
         Text(label, color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
         Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun GlassTabs(
+    tabs: List<String>,
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .height(54.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(18.dp))
+            .padding(5.dp)
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val pillWidth = maxWidth / tabs.size
+            val pillOffset by animateDpAsState(
+                targetValue = pillWidth * selectedTab,
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
+                label = "pill"
+            )
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(pillOffset.roundToPx(), 0) }
+                    .width(pillWidth)
+                    .fillMaxHeight()
+                    .padding(1.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xFF6096FF).copy(alpha = 0.55f),
+                                Color(0xFF6096FF).copy(alpha = 0.28f)
+                            )
+                        )
+                    )
+                    .border(1.dp, Color(0xFF96BEFF).copy(alpha = 0.55f), RoundedCornerShape(13.dp))
+            )
+        }
+
+        Row(modifier = Modifier.fillMaxSize()) {
+            tabs.forEachIndexed { index, title ->
+                val isSelected = selectedTab == index
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onTabSelected(index) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = title,
+                        color = if (isSelected) Color(0xFFeaf1ff) else TextSecond,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -985,3 +1442,11 @@ private fun AddWebsiteDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit)
 ...
 }
 */
+
+@Preview(showBackground = true, backgroundColor = 0xFF080E1A)
+@Composable
+fun LocksScreenPreview() {
+    com.digitalmonk.app.ui.theme.DigitalMonkTheme {
+        LocksScreen(prefs = PrefsManager(LocalContext.current))
+    }
+}

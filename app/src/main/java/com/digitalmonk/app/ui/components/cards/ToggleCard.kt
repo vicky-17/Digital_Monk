@@ -3,9 +3,13 @@ package com.digitalmonk.app.ui.components.cards
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,71 +40,78 @@ fun ToggleCard(
     isLocked: Boolean = false,
     onLockClick: (() -> Unit)? = null
 ) {
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (isEnabled) Color(0xFF0A1520) else Color.Transparent)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically // Changed from Top to Center for better alignment
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp)),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.07f)),
+        shape = RoundedCornerShape(22.dp)
     ) {
-        // Emoji Icon
-        Box(
+        Row(
             modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(if (isEnabled) AccentCyan.copy(0.12f) else TextMuted.copy(0.3f)),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(emoji, fontSize = 18.sp)
-        }
-
-        Spacer(Modifier.width(12.dp))
-
-        // Text Column
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-            Spacer(Modifier.height(2.dp))
-            Text(subtitle, fontSize = 11.sp, color = TextSecond, lineHeight = 15.sp)
-        }
-
-        // --- NEW LOCK ICON PLACEMENT ---
-        if (onLockClick != null && isEnabled) {
+            // Emoji Icon
             Box(
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
+                    .size(38.dp)
                     .clip(CircleShape)
-                    // If locked, show a subtle gold glow background
-                    .background(if (isLocked) Color(0xFFFACC15).copy(alpha = 0.1f) else Color.Transparent)
-                    .clickable(enabled = !isLocked) { onLockClick() }
-                    .padding(10.dp) // Larger touch target
+                    .background(if (isEnabled) AccentCyan.copy(0.12f) else TextMuted.copy(0.3f)),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Lock,
-                    contentDescription = "Lock Settings",
-                    // Yellow when locked, Grey-blue when available
-                    tint = if (isLocked) Color(0xFFFFD700) else Color(0xFF94A3B8),
-                    modifier = Modifier.size(26.dp)
-                )
+                Text(emoji, fontSize = 18.sp)
             }
-        }
 
-        Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(12.dp))
 
-        // Toggle Switch
-        Switch(
-            checked = isEnabled,
-            onCheckedChange = onToggle,
-            enabled = !isLocked,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = AccentCyan,
-                uncheckedThumbColor = Color(0xFF64748B),
-                uncheckedTrackColor = TextMuted,
-                // Add these for better locked state visibility
-                disabledCheckedTrackColor = AccentCyan.copy(alpha = 0.4f),
-                disabledCheckedThumbColor = Color.White.copy(alpha = 0.6f)
+            // Text Column
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, fontSize = 11.sp, color = TextSecond, lineHeight = 15.sp)
+            }
+
+            // --- NEW LOCK ICON PLACEMENT ---
+            if (onLockClick != null && isEnabled) {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .clip(CircleShape)
+                        // If locked, show a subtle gold glow background
+                        .background(if (isLocked) Color(0xFFFACC15).copy(alpha = 0.1f) else Color.Transparent)
+                        .clickable(enabled = !isLocked) { onLockClick() }
+                        .padding(10.dp) // Larger touch target
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = "Lock Settings",
+                        // Yellow when locked, Grey-blue when available
+                        tint = if (isLocked) Color(0xFFFFD700) else Color(0xFF94A3B8),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(4.dp))
+
+            // Toggle Switch
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = onToggle,
+                enabled = !isLocked,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = AccentCyan,
+                    uncheckedThumbColor = Color(0xFF64748B),
+                    uncheckedTrackColor = TextMuted,
+                    disabledCheckedTrackColor = AccentCyan.copy(alpha = 0.4f),
+                    disabledCheckedThumbColor = Color.White.copy(alpha = 0.6f)
+                )
             )
-        )
+        }
     }
 }
 

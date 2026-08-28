@@ -18,7 +18,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -101,160 +103,174 @@ fun PermissionsScreenContent(
     hasOemAutostart: Boolean,
     onRequestPermission: (String) -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text("System Permissions", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF04040c), // BgDeep
+                        Color(0xFF080B1A), // Deep subtle tint
+                        Color(0xFF04040c)
+                    )
                 )
             )
-        }
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Core Protection Requirements",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text("System Permissions", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
                 )
-                Text(
-                    text = "DigitalMonk requires these system settings to successfully block distractions, restrict applications, and ensure continuous background protection.",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                )
-            }
-
-            item { SectionHeader(title = "Critical Services") }
-
-            item {
-                PermissionCard(
-                    title = "Accessibility Service",
-                    description = "Required to monitor app changes, block YouTube Shorts, and handle custom overlay screens dynamically.",
-                    icon = Icons.Rounded.AccessibilityNew,
-                    isGranted = isAccessibilityGranted,
-                    onGrantClick = { onRequestPermission("ACCESSIBILITY") }
-                )
-            }
-
-            item {
-                PermissionCard(
-                    title = "Disable Battery Optimization",
-                    description = "Prevents Android from killing Digital Monk background processes. Crucial for uninterrupted 24/7 rule enforcement.",
-                    icon = Icons.Rounded.BatteryAlert,
-                    isGranted = isBatteryExempt,
-                    onGrantClick = { onRequestPermission("BATTERY_OPTIMIZATION") }
-                )
-            }
-
-            item {
-                PermissionCard(
-                    title = "Display Over Other Apps",
-                    description = "Allows Digital Monk to instantly deploy full-screen block safety pages when a restricted app is launched.",
-                    icon = Icons.Rounded.TextFormat,
-                    isGranted = isOverlayGranted,
-                    onGrantClick = { onRequestPermission("OVERLAY") }
-                )
-            }
-
-            if (isXiaomiDevice || hasOemAutostart) {
-                item { SectionHeader(title = "Background Stability (OEM Settings)") }
-            }
-
-            if (isXiaomiDevice) {
+            },
+            containerColor = Color.Transparent
+        ) { paddingValues ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 item {
-                    PermissionCard(
-                        title = "Background Pop-up Windows (MIUI)",
-                        description = "Required on Xiaomi endpoints to allow background overlay drawing states outside interactive thread limits.",
-                        icon = Icons.Rounded.Layers,
-                        isGranted = visitedMiuiBgPopup,
-                        onGrantClick = { onRequestPermission("MIUI_POPUP") }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Core Protection Requirements",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF3B82F6),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Text(
+                        text = "DigitalMonk requires these system settings to successfully block distractions, restrict applications, and ensure continuous background protection.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF94A3B8)
                     )
                 }
-            }
 
-            if (hasOemAutostart) {
+                item { SectionHeader(title = "Critical Services") }
+
                 item {
                     PermissionCard(
-                        title = "Background Autostart",
-                        description = "Whitelists the companion watchdog subsystem structure to safely start execution patterns immediately upon hardware device boot tracking cascades.",
-                        icon = Icons.Rounded.Autorenew,
-                        isGranted = visitedAutostart,
-                        onGrantClick = { onRequestPermission("AUTOSTART") }
+                        title = "Accessibility Service",
+                        description = "Required to monitor app changes, block YouTube Shorts, and handle custom overlay screens dynamically.",
+                        icon = Icons.Rounded.AccessibilityNew,
+                        isGranted = isAccessibilityGranted,
+                        onGrantClick = { onRequestPermission("ACCESSIBILITY") }
                     )
                 }
+
+                item {
+                    PermissionCard(
+                        title = "Disable Battery Optimization",
+                        description = "Prevents Android from killing Digital Monk background processes. Crucial for uninterrupted 24/7 rule enforcement.",
+                        icon = Icons.Rounded.BatteryAlert,
+                        isGranted = isBatteryExempt,
+                        onGrantClick = { onRequestPermission("BATTERY_OPTIMIZATION") }
+                    )
+                }
+
+                item {
+                    PermissionCard(
+                        title = "Display Over Other Apps",
+                        description = "Allows Digital Monk to instantly deploy full-screen block safety pages when a restricted app is launched.",
+                        icon = Icons.Rounded.TextFormat,
+                        isGranted = isOverlayGranted,
+                        onGrantClick = { onRequestPermission("OVERLAY") }
+                    )
+                }
+
+                if (isXiaomiDevice || hasOemAutostart) {
+                    item { SectionHeader(title = "Background Stability (OEM Settings)") }
+                }
+
+                if (isXiaomiDevice) {
+                    item {
+                        PermissionCard(
+                            title = "Background Pop-up Windows (MIUI)",
+                            description = "Required on Xiaomi endpoints to allow background overlay drawing states outside interactive thread limits.",
+                            icon = Icons.Rounded.Layers,
+                            isGranted = visitedMiuiBgPopup,
+                            onGrantClick = { onRequestPermission("MIUI_POPUP") }
+                        )
+                    }
+                }
+
+                if (hasOemAutostart) {
+                    item {
+                        PermissionCard(
+                            title = "Background Autostart",
+                            description = "Whitelists the companion watchdog subsystem structure to safely start execution patterns immediately upon hardware device boot tracking cascades.",
+                            icon = Icons.Rounded.Autorenew,
+                            isGranted = visitedAutostart,
+                            onGrantClick = { onRequestPermission("AUTOSTART") }
+                        )
+                    }
+                }
+
+                item { SectionHeader(title = "Security & Analytics") }
+
+                item {
+                    PermissionCard(
+                        title = "Device Administrator (Anti-Uninstall)",
+                        description = "Activates platform-level authorization wrappers blocking regular uninstallation vectors unless verified by Parent PIN.",
+                        icon = Icons.Rounded.AdminPanelSettings,
+                        isGranted = isDeviceAdminGranted,
+                        onGrantClick = { onRequestPermission("DEVICE_ADMIN") }
+                    )
+                }
+
+                item {
+                    PermissionCard(
+                        title = "VPN Permission",
+                        description = "Grants Digital Monk permission to run the local content-filter VPN. Required before Always-On VPN can be configured.",
+                        icon = Icons.Rounded.VpnKey,
+                        isGranted = isVpnPermissionGranted,
+                        onGrantClick = { onRequestPermission("VPN_PERMISSION") }
+                    )
+                }
+
+                item {
+                    PermissionCard(
+                        title = "Always-On VPN Protection",
+                        description = "Locks down device internet access. Ensures your custom web filters and content blocks cannot be bypassed or disabled.",
+                        icon = Icons.Rounded.VpnLock,
+                        isGranted = isAlwaysOnVpnGranted,
+                        onGrantClick = { onRequestPermission("ALWAYS_ON_VPN") }
+                    )
+                }
+
+                item {
+                    PermissionCard(
+                        title = "Usage Access Statistics",
+                        description = "Grants read access to usage event streams to accurately monitor screen-time intervals and generate data records.",
+                        icon = Icons.Rounded.QueryStats,
+                        isGranted = isUsageStatsGranted,
+                        onGrantClick = { onRequestPermission("USAGE_STATS") }
+                    )
+                }
+
+                item {
+                    PermissionCard(
+                        title = "System Notifications",
+                        description = "Allows the persistent tracking notification indicator status layout and pushes active real-time block notifications.",
+                        icon = Icons.Rounded.NotificationsActive,
+                        isGranted = hasNotification,
+                        onGrantClick = { onRequestPermission("NOTIFICATIONS") }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(24.dp)) }
             }
-
-            item { SectionHeader(title = "Security & Analytics") }
-
-            item {
-                PermissionCard(
-                    title = "Device Administrator (Anti-Uninstall)",
-                    description = "Activates platform-level authorization wrappers blocking regular uninstallation vectors unless verified by Parent PIN.",
-                    icon = Icons.Rounded.AdminPanelSettings,
-                    isGranted = isDeviceAdminGranted,
-                    onGrantClick = { onRequestPermission("DEVICE_ADMIN") }
-                )
-            }
-
-            item {
-                PermissionCard(
-                    title = "VPN Permission",
-                    description = "Grants Digital Monk permission to run the local content-filter VPN. Required before Always-On VPN can be configured.",
-                    icon = Icons.Rounded.VpnKey,
-                    isGranted = isVpnPermissionGranted,
-                    onGrantClick = { onRequestPermission("VPN_PERMISSION") }
-                )
-            }
-
-            item {
-                PermissionCard(
-                    title = "Always-On VPN Protection",
-                    description = "Locks down device internet access. Ensures your custom web filters and content blocks cannot be bypassed or disabled.",
-                    icon = Icons.Rounded.VpnLock,
-                    isGranted = isAlwaysOnVpnGranted,
-                    onGrantClick = { onRequestPermission("ALWAYS_ON_VPN") }
-                )
-            }
-
-            item {
-                PermissionCard(
-                    title = "Usage Access Statistics",
-                    description = "Grants read access to usage event streams to accurately monitor screen-time intervals and generate data records.",
-                    icon = Icons.Rounded.QueryStats,
-                    isGranted = isUsageStatsGranted,
-                    onGrantClick = { onRequestPermission("USAGE_STATS") }
-                )
-            }
-
-            item {
-                PermissionCard(
-                    title = "System Notifications",
-                    description = "Allows the persistent tracking notification indicator status layout and pushes active real-time block notifications.",
-                    icon = Icons.Rounded.NotificationsActive,
-                    isGranted = hasNotification,
-                    onGrantClick = { onRequestPermission("NOTIFICATIONS") }
-                )
-            }
-
-            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
 }
@@ -265,9 +281,9 @@ private fun SectionHeader(title: String) {
         text = title.uppercase(),
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+        color = Color(0xFF3B82F6),
         letterSpacing = 1.2.sp,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp, start = 4.dp)
     )
 }
 
@@ -280,11 +296,13 @@ fun PermissionCard(
     onGrantClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp)),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isGranted) Color(0xFF0D2B1A)
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            containerColor = if (isGranted) Color(0xFF0D2B1A).copy(alpha = 0.6f)
+            else Color.White.copy(alpha = 0.07f)
         )
     ) {
         Row(
@@ -296,7 +314,7 @@ fun PermissionCard(
                     .size(44.dp)
                     .background(
                         color = if (isGranted) Color(0xFF16A34A).copy(alpha = 0.15f)
-                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        else Color(0xFF3B82F6).copy(alpha = 0.1f),
                         shape = RoundedCornerShape(12.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -304,7 +322,7 @@ fun PermissionCard(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (isGranted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                    tint = if (isGranted) Color(0xFF4CAF50) else Color(0xFF3B82F6),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -336,9 +354,9 @@ fun PermissionCard(
                 } else {
                     Button(
                         onClick = onGrantClick,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
+                            containerColor = Color(0xFF3B82F6),
                             contentColor   = Color.White
                         ),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),

@@ -1,6 +1,7 @@
 package com.digitalmonk.app.ui.components.cards
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,11 +37,12 @@ fun ActionCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = BgCard),
-        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.07f)),
+        shape = RoundedCornerShape(22.dp),
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp))
             .clickable(onClick = onClick)
     ) {
         Row(

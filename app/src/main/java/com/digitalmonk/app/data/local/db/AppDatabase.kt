@@ -5,8 +5,10 @@ import androidx.room.Database
 import androidx.room.Room.databaseBuilder
 import androidx.room.RoomDatabase
 import com.digitalmonk.app.data.local.db.dao.AppBlockDao
+import com.digitalmonk.app.data.local.db.dao.AppUsageDao
 import com.digitalmonk.app.data.local.db.dao.UsageLogDao
 import com.digitalmonk.app.data.local.db.entity.AppBlockRule
+import com.digitalmonk.app.data.local.db.entity.AppUsageEntity
 import com.digitalmonk.app.data.local.db.entity.UsageLogEntity
 import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatDao
 import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatEntity
@@ -17,12 +19,13 @@ import kotlin.concurrent.Volatile
  * All entities (UsageLogs, Heartbeats, etc.) are registered here.
  */
 @Database(
-    entities = [UsageLogEntity::class, VpnHeartBeatEntity::class, AppBlockRule::class],
-    version = 3,
+    entities = [UsageLogEntity::class, VpnHeartBeatEntity::class, AppBlockRule::class, AppUsageEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun usageLogDao(): UsageLogDao
+    abstract fun appUsageDao(): AppUsageDao
     abstract fun vpnHeartBeatDao(): VpnHeartBeatDao
     abstract fun appBlockDao(): AppBlockDao
 

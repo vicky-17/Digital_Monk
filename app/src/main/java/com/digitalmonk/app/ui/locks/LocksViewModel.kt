@@ -18,6 +18,7 @@ data class AppItem(
     val packageName: String,
     val icon: Drawable?,
     val isSystemApp: Boolean,
+    val isSocial: Boolean = false,
     val isBlocked: Boolean = false
 )
 
@@ -29,12 +30,18 @@ data class WizardState(
     val blockMethod: String = "INTERSTITIAL",
     val timingMode: String = "ON_DEMAND",
     val selectedDays: Set<Int> = emptySet(), // 1 for Monday, 7 for Sunday
+    val multiDayCount: Int = 7,
+    val pomodoroFocus: Int = 25,
+    val pomodoroShortBreak: Int = 5,
+    val pomodoroLongBreak: Int = 15,
+    val pomodoroCycles: Int = 4,
+    val enforcedEndDate: Long? = null,
     val planName: String = "",
     // Step 1 Details
-    val allowedMinutes: Int = 0,
+    val allowedMinutes: Int = 30,
     val intervalMinutes: Int = 60,
     // Habit Details
-    val maxLaunches: Int = 0,
+    val maxLaunches: Int = 5,
     val maxTimePerLaunch: Int = 0,
     // Step 5 Details
     val stopChallenge: String = "NONE",
@@ -86,6 +93,14 @@ class LocksViewModel(
             
             val pm = context.packageManager
             val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            
+            val socialPackages = setOf(
+                "com.facebook.katana", "com.instagram.android", "com.twitter.android", 
+                "com.zhiliaoapp.musically", "com.whatsapp", "com.snapchat.android",
+                "com.reddit.frontpage", "com.linkedin.android", "org.telegram.messenger",
+                "com.google.android.youtube", "com.pinterest"
+            )
+
             val appItems = packages.mapNotNull { appInfo ->
                 if (appInfo.packageName == context.packageName) return@mapNotNull null
                 val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
@@ -95,7 +110,8 @@ class LocksViewModel(
                     name = appInfo.loadLabel(pm).toString(),
                     packageName = appInfo.packageName,
                     icon = appInfo.loadIcon(pm),
-                    isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                    isSocial = socialPackages.contains(appInfo.packageName)
                 )
             }
             _installedApps.value = appItems
@@ -116,7 +132,20 @@ class LocksViewModel(
     // --- Wizard Actions ---
 
     fun nextStep() {
-        _wizardState.update { it.copy(currentStep = it.currentStep + 1) }
+        _wizardState.update { state ->
+            val next = state.currentStep + 1
+            if (next == 5 && state.planName.isBlank()) {
+                val nextNum = calculateNextPlanNumber()
+                state.copy(currentStep = next, planName = "Plan $nextNum")
+            } else {
+                state.copy(currentStep = next)
+            }
+        }
+    }
+
+    private fun calculateNextPlanNumber(): Int {
+        val uniquePlanNames = activeRules.value.map { it.planName }.distinct()
+        return uniquePlanNames.size + 1
     }
 
     fun previousStep() {
@@ -146,7 +175,16 @@ class LocksViewModel(
             when (state.currentStep) {
                 1 -> state.copy(planType = "STAY_FOCUSED")
                 2 -> state.copy(selectedPackages = emptySet(), blockMethod = "SUSPEND")
-                3 -> state.copy(timingMode = "ON_DEMAND", selectedDays = emptySet())
+                3 -> state.copy(
+                    timingMode = "ON_DEMAND", 
+                    selectedDays = emptySet(), 
+                    multiDayCount = 7,
+                    pomodoroFocus = 25,
+                    pomodoroShortBreak = 5,
+                    pomodoroLongBreak = 15,
+                    pomodoroCycles = 4,
+                    enforcedEndDate = null
+                )
                 4 -> state.copy(allowedMinutes = 0, maxLaunches = 0, intervalMinutes = 60)
                 5 -> state.copy(stopChallenge = "NONE", isAntiUninstall = false)
                 6 -> state.copy(planName = "")
@@ -168,6 +206,18 @@ class LocksViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val rules = state.selectedPackages.map { pkg ->
                 val app = _installedApps.value.find { it.packageName == pkg }
+                val activeDaysMask = if (state.timingMode == "WEEKLY") {
+                    var mask = 0
+                    state.selectedDays.forEach { mask = mask or (1 shl (it - 1)) }
+                    mask
+                } else 127 // Default all days
+
+                val expiry = if (state.stopChallenge == "ENFORCED" && state.enforcedEndDate != null) {
+                    state.enforcedEndDate
+                } else if (state.timingMode == "MULTI_DAY") {
+                    System.currentTimeMillis() + (state.multiDayCount * 24 * 60 * 60 * 1000L)
+                } else 0L
+
                 AppBlockRule(
                     packageName = pkg,
                     appName = app?.name ?: "Unknown App",
@@ -179,6 +229,8 @@ class LocksViewModel(
                     blockMethod = state.blockMethod,
                     useInterstitial = state.blockMethod == "INTERSTITIAL",
                     timingMode = state.timingMode,
+                    activeDays = activeDaysMask,
+                    expiryTimestamp = expiry,
                     planName = state.planName,
                     stopChallengeType = state.stopChallenge,
                     isAntiUninstallEnabled = state.isAntiUninstall
@@ -193,6 +245,12 @@ class LocksViewModel(
     fun removeRule(packageName: String) {
         viewModelScope.launch(Dispatchers.IO) {
             appBlockDao.deleteRuleByPackage(packageName)
+        }
+    }
+
+    fun removePlan(planName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            appBlockDao.deleteRulesByPlanName(planName)
         }
     }
 

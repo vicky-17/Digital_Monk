@@ -2,6 +2,7 @@ package com.digitalmonk.app.ui.components.cards
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -45,9 +46,10 @@ fun DnsProtectionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg),
-        shape = RoundedCornerShape(16.dp)
+            .padding(horizontal = 20.dp)
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp)),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.07f)),
+        shape = RoundedCornerShape(22.dp)
     ) {
         Column {
             // --- 1. Master DNS Toggle ---

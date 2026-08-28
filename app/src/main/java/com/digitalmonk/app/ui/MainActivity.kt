@@ -15,21 +15,34 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -52,7 +65,10 @@ import com.digitalmonk.app.ui.sidebar.PermissionsSidebar
 import com.digitalmonk.app.ui.auth.AccountScreen
 import com.digitalmonk.app.ui.theme.DigitalMonkTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.digitalmonk.app.ui.dashboard.DashboardScreen
+import com.digitalmonk.app.ui.dashboard.UsageBreakdownScreen
+import com.digitalmonk.app.ui.dashboard.UsageViewModel
 import com.digitalmonk.app.ui.security.SecurityScreen
 import com.digitalmonk.app.ui.locks.LocksScreen
 
@@ -90,6 +106,9 @@ sealed class AppDestination {
 
     /** Full-screen Account / Login screen */
     object Account : AppDestination()
+
+    /** Full-screen Usage Breakdown screen */
+    object UsageBreakdown : AppDestination()
 }
 
 data class PermissionsState(
@@ -184,7 +203,11 @@ class MainActivity : BaseActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun MainNavigationShell(prefs: PrefsManager, onLock: () -> Unit) {
-        var currentScreen  by remember { mutableStateOf(Screen.DASHBOARD) }
+        val screens = Screen.entries
+        val pagerState = rememberPagerState(pageCount = { screens.size })
+        val currentScreen = screens[pagerState.currentPage]
+        val scope = rememberCoroutineScope()
+        
         var sidebarOpen    by remember { mutableStateOf(false) }
 
         // ── Single source of truth for which top-level destination is active ──
@@ -219,6 +242,8 @@ class MainActivity : BaseActivity() {
         BackHandler(enabled = destination != AppDestination.Main) {
             destination = AppDestination.Main
         }
+        
+        val usageViewModel: UsageViewModel = viewModel()
 
         val scrimAlpha by animateFloatAsState(
             targetValue    = if (sidebarOpen) 0.6f else 0f,
@@ -265,64 +290,20 @@ class MainActivity : BaseActivity() {
 
                         Scaffold(
                             topBar = {
-                                TopAppBar(
-                                    title = {
-                                        Text(
-                                            text = "DigitalMonk",
-                                            fontSize = 24.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimary
-                                        )
-                                    },
-                                    navigationIcon = {
-                                        IconButton(
-                                            onClick   = { sidebarOpen = true },
-                                            modifier  = Modifier.size(48.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector     = Icons.Rounded.Menu,
-                                                contentDescription = "Open Navigation Menu",
-                                                tint            = TextPrimary,
-                                                modifier        = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    },
-                                    actions = {
-                                        IconButton(
-                                            onClick  = { destination = AppDestination.Account },
-                                            modifier = Modifier.size(48.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector     = Icons.Rounded.AccountCircle,
-                                                contentDescription = "View Account Profile",
-                                                tint            = TextSecond,
-                                                modifier        = Modifier.size(32.dp)
-                                            )
-                                        }
-                                    }
+                                DashboardHeader(
+                                    onBack = { sidebarOpen = true },
+                                    onAccountClick = { destination = AppDestination.Account }
                                 )
                             },
                             bottomBar = {
-                                NavigationBar(
-                                    containerColor = BgCard,
-                                    tonalElevation = 8.dp
-                                ) {
-                                    Screen.entries.forEach { screen ->
-                                        NavigationBarItem(
-                                            selected = currentScreen == screen,
-                                            onClick  = { currentScreen = screen },
-                                            label    = { Text(screen.title, fontSize = 11.sp) },
-                                            icon     = { Text(screen.icon, fontSize = 20.sp) },
-                                            colors   = NavigationBarItemDefaults.colors(
-                                                selectedIconColor   = AccentBlue,
-                                                selectedTextColor   = TextPrimary,
-                                                unselectedIconColor = TextSecond,
-                                                unselectedTextColor = TextSecond,
-                                                indicatorColor      = BgDeep
-                                            )
-                                        )
+                                GlassNavigationBar(
+                                    currentScreen = currentScreen,
+                                    onScreenSelected = { screen ->
+                                        scope.launch {
+                                            pagerState.animateScrollToPage(screens.indexOf(screen))
+                                        }
                                     }
-                                }
+                                )
                             },
                             containerColor = BgDeep
                         ) { innerPadding ->
@@ -331,22 +312,30 @@ class MainActivity : BaseActivity() {
                                     .fillMaxSize()
                                     .padding(innerPadding)
                             ) {
-                                when (currentScreen) {
-                                    Screen.DASHBOARD -> DashboardScreen(
-                                        prefs           = prefs,
-                                        refreshKey      = refreshKey,
-                                        onRefresh       = { refreshKey = System.currentTimeMillis() },
-                                    )
-                                    Screen.LOCKS    -> LocksScreen(prefs = prefs)
-                                    Screen.SECURITY -> SecurityScreen(prefs = prefs)
-                                    Screen.SETTINGS -> SettingsScreen(
-                                        onNavigateToPermissions = {
-                                            destination = AppDestination.Permissions
-                                        },
-                                        onChangePinClick = {
-                                            startActivity(Intent(this@MainActivity, PinSetupActivity::class.java))
-                                        }
-                                    )
+                                HorizontalPager(
+                                    state = pagerState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    beyondViewportPageCount = 1
+                                ) { page ->
+                                    when (screens[page]) {
+                                        Screen.DASHBOARD -> DashboardScreen(
+                                            prefs           = prefs,
+                                            refreshKey      = refreshKey,
+                                            onRefresh       = { refreshKey = System.currentTimeMillis() },
+                                            onNavigateToUsageStats = { destination = AppDestination.UsageBreakdown },
+                                            usageViewModel = usageViewModel
+                                        )
+                                        Screen.LOCKS    -> LocksScreen(prefs = prefs)
+                                        Screen.SECURITY -> SecurityScreen(prefs = prefs)
+                                        Screen.SETTINGS -> SettingsScreen(
+                                            onNavigateToPermissions = {
+                                                destination = AppDestination.Permissions
+                                            },
+                                            onChangePinClick = {
+                                                startActivity(Intent(this@MainActivity, PinSetupActivity::class.java))
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -394,6 +383,14 @@ class MainActivity : BaseActivity() {
                         onBackClick = { destination = AppDestination.Main }
                     )
                 }
+
+                // ── USAGE BREAKDOWN full-screen ───────────────────────────────
+                AppDestination.UsageBreakdown -> {
+                    UsageBreakdownScreen(
+                        viewModel = usageViewModel,
+                        onBack = { destination = AppDestination.Main }
+                    )
+                }
             }
         }
     }
@@ -410,6 +407,178 @@ class MainActivity : BaseActivity() {
                 fontSize   = 16.sp,
                 fontWeight = FontWeight.Medium
             )
+        }
+    }
+}
+
+@Composable
+private fun DashboardHeader(
+    onBack: () -> Unit,
+    onAccountClick: () -> Unit
+) {
+    val TextPrimary = Color(0xFFF1F5F9)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(56.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(28.dp))
+            .padding(horizontal = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.Rounded.Menu,
+                    contentDescription = "Menu",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+
+            Text(
+                text = "Digital Monk",
+                color = TextPrimary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center
+            )
+
+            IconButton(onClick = onAccountClick) {
+                Icon(
+                    imageVector = Icons.Rounded.AccountCircle,
+                    contentDescription = "Account",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassNavigationBar(
+    currentScreen: Screen,
+    onScreenSelected: (Screen) -> Unit
+) {
+    val screens = Screen.entries
+    val selectedIndex = screens.indexOf(currentScreen)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .height(64.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp))
+            .padding(6.dp)
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val pillWidth = maxWidth / screens.size
+            val pillOffset by animateDpAsState(
+                targetValue = pillWidth * selectedIndex,
+                animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessLow),
+                label = "nav_pill"
+            )
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(pillOffset.roundToPx(), 0) }
+                    .width(pillWidth)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xFF6096FF).copy(alpha = 0.45f),
+                                Color(0xFF6096FF).copy(alpha = 0.20f)
+                            )
+                        )
+                    )
+                    .border(1.dp, Color(0xFF96BEFF).copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+            )
+        }
+
+        Row(modifier = Modifier.fillMaxSize()) {
+            screens.forEachIndexed { index, screen ->
+                val isSelected = selectedIndex == index
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onScreenSelected(screen) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = screen.icon,
+                            fontSize = if (isSelected) 20.sp else 18.sp,
+                            modifier = Modifier.alpha(if (isSelected) 1f else 0.7f)
+                        )
+                        Text(
+                            text = screen.title,
+                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, device = "spec:width=411dp,height=891dp")
+@Composable
+fun MainPreview() {
+    val BgDeep      = Color(0xFF080E1A)
+    val BgCard      = Color(0xFF111827)
+    val AccentBlue  = Color(0xFF3B82F6)
+    val TextPrimary = Color(0xFFF1F5F9)
+    val TextSecond  = Color(0xFF64748B)
+
+    com.digitalmonk.app.ui.theme.DigitalMonkTheme {
+        Scaffold(
+            topBar = {
+                DashboardHeader(onBack = {}, onAccountClick = {})
+            },
+            bottomBar = {
+                GlassNavigationBar(
+                    currentScreen = Screen.DASHBOARD,
+                    onScreenSelected = {}
+                )
+            },
+            containerColor = BgDeep
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding)) {
+                com.digitalmonk.app.ui.dashboard.DashboardContent(
+                    safeSearchEnabled = true,
+                    blockShorts = false,
+                    isLocked = false,
+                    onSafeSearchToggle = {},
+                    onBlockShortsToggle = {},
+                    onLockClick = {},
+                    onLockdownVpnClick = {},
+                    onNavigateToUsageStats = {},
+                    previewUsageStats = listOf(
+                        com.digitalmonk.app.data.models.AppUsageInfo("com.google.android.youtube", "YouTube", null, 120 * 60 * 1000L, 10),
+                        com.digitalmonk.app.data.models.AppUsageInfo("com.instagram.android", "Instagram", null, 45 * 60 * 1000L, 5)
+                    ),
+                    previewComparisonPercent = -15
+                )
+            }
         }
     }
 }

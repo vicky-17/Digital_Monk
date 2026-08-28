@@ -24,6 +24,9 @@ interface AppBlockDao {
     @Query("DELETE FROM app_block_rules WHERE packageName = :packageName")
     suspend fun deleteRuleByPackage(packageName: String)
 
+    @Query("DELETE FROM app_block_rules WHERE planName = :planName")
+    suspend fun deleteRulesByPlanName(planName: String)
+
     @Query("DELETE FROM app_block_rules")
     suspend fun deleteAllRules()
 }
