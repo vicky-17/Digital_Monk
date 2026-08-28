@@ -1,75 +1,68 @@
-package com.digitalmonk.app.core.utils;
+package com.digitalmonk.app.core.utils
 
 /**
  * Why we made this file:
  * In a complex system like Digital Monk, many different parts of the app
  * (Services, Receivers, and UI) need to refer to the same specific values,
  * such as Notification IDs or Preference keys.
- *
+ * 
  * Instead of "hard-coding" these values (writing "digital_monk_prefs" in five
  * different files), we store them here. This creates a "Single Source of Truth."
  * If you ever need to change a channel ID or a request code, you only change it
  * here once, and the entire app updates automatically.
- *
+ * 
  * What the file name defines:
  * "Constants" signifies that this class holds immutable (unchanging) values
  * that are used globally across the project.
  */
-public final class Constants {
-
-    // Suppress default constructor to prevent instantiation
-    private Constants() {}
-
+object Constants {
     // ── Logging ───────────────────────────────────────────────────────────────
-    public static final String LOG_TAG = "DigitalMonk";
+    const val LOG_TAG: String = "DigitalMonk"
 
     // ── Notification IDs ──────────────────────────────────────────────────────
-    public static final int NOTIFICATION_ID_GUARDIAN = 1;
-    public static final int NOTIFICATION_ID_VPN = 3;
+    const val NOTIFICATION_ID_GUARDIAN: Int = 1
+    const val NOTIFICATION_ID_VPN: Int = 3
 
 
     // ── Notification Channels ─────────────────────────────────────────────────
-    public static final String CHANNEL_GUARDIAN = "channel_guardian";
-    public static final String CHANNEL_OVERLAY = "channel_overlay";
-    public static final String CHANNEL_VPN = "channel_vpn";
-    public static final String CHANNEL_SCREEN_TIME = "channel_screen_time";
-    public static final String CHANNEL_ALERTS = "channel_alerts";
-    public static final String CHANNEL_SILENT = "channel_silent";
+    const val CHANNEL_GUARDIAN: String = "channel_guardian"
+    const val CHANNEL_OVERLAY: String = "channel_overlay"
+    const val CHANNEL_VPN: String = "channel_vpn"
+    const val CHANNEL_SCREEN_TIME: String = "channel_screen_time"
+    const val CHANNEL_ALERTS: String = "channel_alerts"
+    const val CHANNEL_SILENT: String = "channel_silent"
 
-    public static final int NOTIFICATION_ID_SETTINGS_BLOCK = 1004;
+    const val NOTIFICATION_ID_SETTINGS_BLOCK: Int = 1004
 
 
     // ── SharedPrefs / DataStore keys ──────────────────────────────────────────
-    public static final String PREFS_NAME = "digital_monk_prefs";
+    const val PREFS_NAME: String = "digital_monk_prefs"
 
     // ── Request Codes ─────────────────────────────────────────────────────────
-    public static final int RC_OVERLAY_PERMISSION = 1001;
-    public static final int RC_USAGE_STATS = 1002;
-    public static final int RC_DEVICE_ADMIN = 1003;
-    public static final int RC_VPN_PERMISSION = 1004;
-    public static final int RC_NOTIFICATION_PERM = 1005;
+    const val RC_OVERLAY_PERMISSION: Int = 1001
+    const val RC_USAGE_STATS: Int = 1002
+    const val RC_DEVICE_ADMIN: Int = 1003
+    const val RC_VPN_PERMISSION: Int = 1004
+    const val RC_NOTIFICATION_PERM: Int = 1005
 
     // ── WorkManager Tags ──────────────────────────────────────────────────────
-    public static final String WORK_USAGE_SYNC = "work_usage_sync";
-    public static final String WORK_BLOCKLIST_UPDATE = "work_blocklist_update";
+    const val WORK_USAGE_SYNC: String = "work_usage_sync"
+    const val WORK_BLOCKLIST_UPDATE: String = "work_blocklist_update"
 
     // ── Deep-link / Intent extras ─────────────────────────────────────────────
-    public static final String EXTRA_TARGET_SCREEN = "extra_target_screen";
-    public static final String EXTRA_BLOCKED_PACKAGE = "extra_blocked_package";
+    const val EXTRA_TARGET_SCREEN: String = "extra_target_screen"
+    const val EXTRA_BLOCKED_PACKAGE: String = "extra_blocked_package"
 
-    public static final int NOTIFICATION_ID_LOCK_TIMER = 1005;
+    const val NOTIFICATION_ID_LOCK_TIMER: Int = 1005
 
 
     // ── Allowlist page keywords ────────────────────────────────────────────────
-    public static final String ALLOW_ACCESSIBILITY   = "accessibility";
-    public static final String ALLOW_OVERLAY         = "display over other apps";
-    public static final String ALLOW_USAGE_STATS     = "usage access";
-    public static final String ALLOW_BATTERY         = "battery optimization";
-    public static final String ALLOW_DEVICE_ADMIN    = "device admin";
-    public static final String ALLOW_VPN             = "vpn";
-    public static final String ALLOW_NOTIFICATIONS   = "notifications";
-    public static final String ALLOW_AUTOSTART       = "autostart";
-
-
-
+    const val ALLOW_ACCESSIBILITY: String = "accessibility"
+    const val ALLOW_OVERLAY: String = "display over other apps"
+    const val ALLOW_USAGE_STATS: String = "usage access"
+    const val ALLOW_BATTERY: String = "battery optimization"
+    const val ALLOW_DEVICE_ADMIN: String = "device admin"
+    const val ALLOW_VPN: String = "vpn"
+    const val ALLOW_NOTIFICATIONS: String = "notifications"
+    const val ALLOW_AUTOSTART: String = "autostart"
 }

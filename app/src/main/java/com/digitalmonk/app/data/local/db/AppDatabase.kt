@@ -1,45 +1,59 @@
-package com.digitalmonk.app.data.local.db;
+package com.digitalmonk.app.data.local.db
 
-import android.content.Context;
-import androidx.room.Database;
-import androidx.room.Room;
-import androidx.room.RoomDatabase;
-
-import com.digitalmonk.app.data.local.db.dao.UsageLogDao;
-import com.digitalmonk.app.data.local.db.dao.AppBlockDao;
-import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatDao;
-import com.digitalmonk.app.data.local.db.entity.UsageLogEntity;
-import com.digitalmonk.app.data.local.db.entity.AppBlockRule;
-import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatEntity;
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room.databaseBuilder
+import androidx.room.RoomDatabase
+import com.digitalmonk.app.data.local.db.dao.AppBlockDao
+import com.digitalmonk.app.data.local.db.dao.UsageLogDao
+import com.digitalmonk.app.data.local.db.entity.AppBlockRule
+import com.digitalmonk.app.data.local.db.entity.UsageLogEntity
+import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatDao
+import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatEntity
+import kotlin.concurrent.Volatile
 
 /**
  * The sole Database class for the application.
  * All entities (UsageLogs, Heartbeats, etc.) are registered here.
  */
-@Database(entities = {UsageLogEntity.class, VpnHeartBeatEntity.class, AppBlockRule.class}, version = 2, exportSchema = false)
-public abstract class AppDatabase extends RoomDatabase {
+@Database(
+    entities = [UsageLogEntity::class, VpnHeartBeatEntity::class, AppBlockRule::class],
+    version = 3,
+    exportSchema = false,
+)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun usageLogDao(): UsageLogDao
+    abstract fun vpnHeartBeatDao(): VpnHeartBeatDao
+    abstract fun appBlockDao(): AppBlockDao
 
-    private static volatile AppDatabase INSTANCE;
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
 
-    public abstract UsageLogDao usageLogDao();
-    public abstract VpnHeartBeatDao vpnHeartBeatDao();
-    public abstract AppBlockDao appBlockDao();
-
-    /**
-     * Standard Singleton pattern to provide access to the database.
-     */
-    public static AppDatabase getDatabase(final Context context) {
-        if (INSTANCE == null) {
-            synchronized (AppDatabase.class) {
-                if (INSTANCE == null) {
-                    INSTANCE = Room.databaseBuilder(context.getApplicationContext(),
-                                    AppDatabase.class, "app_database")
-                            .fallbackToDestructiveMigrationOnDowngrade(false)
-                            .fallbackToDestructiveMigration() // Add this to simplify migration for now
-                            .build();
-                }
+        /**
+         * Standard Singleton pattern to provide access to the database.
+         */
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(AppDatabase::class.java) {
+                INSTANCE ?: databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "app_database",
+                )
+                    .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = false)
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build().also { INSTANCE = it }
             }
         }
-        return INSTANCE;
+
+        /**
+         * Emergency utility to wipe the database files from disk.
+         * Used to fix "Integrity Hash" crashes without uninstallation.
+         */
+        fun deleteDatabaseFile(context: Context) {
+            INSTANCE?.close()
+            INSTANCE = null
+            context.deleteDatabase("app_database")
+        }
     }
 }

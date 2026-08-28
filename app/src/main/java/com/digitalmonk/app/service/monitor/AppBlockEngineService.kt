@@ -5,12 +5,19 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.digitalmonk.app.data.local.db.AppDatabase
 import com.digitalmonk.app.data.local.db.entity.AppBlockRule
 import kotlinx.coroutines.*
+
+import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.core.utils.PermissionHelper
+import android.widget.Toast
+import android.os.Handler
+import android.os.Looper
 
 class AppBlockEngineService : Service() {
 
@@ -19,6 +26,7 @@ class AppBlockEngineService : Service() {
 
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var db: AppDatabase
+    private lateinit var prefs: PrefsManager
 
     private var lastForegroundApp: String? = null
 
@@ -26,6 +34,7 @@ class AppBlockEngineService : Service() {
         super.onCreate()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         db = AppDatabase.getDatabase(this)
+        prefs = PrefsManager(this)
         startForegroundService()
         startMonitoring()
     }
@@ -58,6 +67,40 @@ class AppBlockEngineService : Service() {
 
     private suspend fun checkForegroundApp() {
         val currentApp = getForegroundPackage() ?: return
+
+        // Handle Banking Mode Timeout & Enforcement
+        if (prefs.isBankingBypassEnabled) {
+            val startTime = prefs.bankingBypassStartTime
+            val now = System.currentTimeMillis()
+            if (now - startTime > 10 * 60 * 1000L) {
+                // Auto-disable timeout
+                prefs.isBankingBypassEnabled = false
+                prefs.bankingBypassPackage = null
+                prefs.bankingBypassStartTime = 0L
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@AppBlockEngineService, "Banking Mode expired.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Strict Enforcement: If accessibility is OFF, only allowed apps
+                if (!PermissionHelper.isAccessibilityEnabled(this)) {
+                    val allowedPackages = listOf(
+                        packageName, 
+                        prefs.bankingBypassPackage, 
+                        PermissionHelper.getLauncherPackageName(this)
+                    )
+                    
+                    if (currentApp != null && !allowedPackages.contains(currentApp)) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@AppBlockEngineService, 
+                                "Only ${prefs.bankingBypassPackage} is allowed during Banking Mode. Re-enable Accessibility for other apps.", 
+                                Toast.LENGTH_LONG).show()
+                        }
+                        returnToHome()
+                        return
+                    }
+                }
+            }
+        }
 
         // Don't block our own app or if the app hasn't changed
         if (currentApp == packageName || currentApp == lastForegroundApp) return

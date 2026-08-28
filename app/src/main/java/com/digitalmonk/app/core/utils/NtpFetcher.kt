@@ -3,104 +3,100 @@
 // Has 2 fallback servers: time.cloudflare.com, pool.ntp.org
 // Static method: NtpFetcher.fetchNtpTime()
 // Must be called off main thread (already handled by callers)
+package com.digitalmonk.app.core.utils
 
+import android.util.Log
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 
-package com.digitalmonk.app.core.utils;
-
-import android.util.Log;
-
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-
-public class NtpFetcher {
-
-    private static final String TAG = "NtpFetcher";
-    private static final int    NTP_PORT        = 123;
-    private static final int    NTP_PACKET_SIZE = 48;
-    private static final int    TIMEOUT_MS      = 4000;
+object NtpFetcher {
+    private const val TAG = "NtpFetcher"
+    private const val NTP_PORT = 123
+    private const val NTP_PACKET_SIZE = 48
+    private const val TIMEOUT_MS = 4000
 
     // Difference between NTP epoch (1900) and Unix epoch (1970) in seconds
-    private static final long NTP_UNIX_OFFSET = 2208988800L;
+    private const val NTP_UNIX_OFFSET = 2208988800L
 
-    private static final String[] SERVERS = {
-            "time.google.com",
-            "time.cloudflare.com",
-            "pool.ntp.org"
-    };
+    private val SERVERS = arrayOf<String?>(
+        "time.google.com",
+        "time.cloudflare.com",
+        "pool.ntp.org"
+    )
 
     /**
      * Fetches current time from NTP servers.
      * Tries each server in order, returns first success.
-     *
+     * 
      * @return Unix epoch milliseconds, or -1 if all servers failed.
      * MUST be called off the main thread.
      */
-    public static long fetchNtpTime() {
-        for (String server : SERVERS) {
-            long result = queryServer(server);
+    @JvmStatic
+    fun fetchNtpTime(): Long {
+        for (server in SERVERS) {
+            val result = queryServer(server)
             if (result > 0) {
-                Log.i(TAG, "NTP time fetched from " + server + " → " + result);
-                return result;
+                Log.i(TAG, "NTP time fetched from " + server + " → " + result)
+                return result
             }
         }
-        Log.w(TAG, "All NTP servers failed");
-        return -1;
+        Log.w(TAG, "All NTP servers failed")
+        return -1
     }
 
-    private static long queryServer(String server) {
-        DatagramSocket socket = null;
+    private fun queryServer(server: String?): Long {
+        var socket: DatagramSocket? = null
         try {
-            socket = new DatagramSocket();
-            socket.setSoTimeout(TIMEOUT_MS);
+            socket = DatagramSocket()
+            socket.setSoTimeout(TIMEOUT_MS)
 
             // Build NTP request packet
-            byte[] buffer = new byte[NTP_PACKET_SIZE];
+            val buffer = ByteArray(NTP_PACKET_SIZE)
             // LI=0, VN=3, Mode=3 (client)
-            buffer[0] = 0x1B;
+            buffer[0] = 0x1B
 
-            InetAddress address = InetAddress.getByName(server);
-            DatagramPacket request = new DatagramPacket(
-                    buffer, buffer.length, address, NTP_PORT
-            );
+            val address = InetAddress.getByName(server)
+            val request = DatagramPacket(
+                buffer, buffer.size, address, NTP_PORT
+            )
 
             // Record time just before sending (T1)
-            long requestTime = System.currentTimeMillis();
-            socket.send(request);
+            val requestTime = System.currentTimeMillis()
+            socket.send(request)
 
             // Receive response
-            DatagramPacket response = new DatagramPacket(
-                    new byte[NTP_PACKET_SIZE], NTP_PACKET_SIZE
-            );
-            socket.receive(response);
+            val response = DatagramPacket(
+                ByteArray(NTP_PACKET_SIZE), NTP_PACKET_SIZE
+            )
+            socket.receive(response)
 
             // Record time just after receiving (T4)
-            long responseTime = System.currentTimeMillis();
+            val responseTime = System.currentTimeMillis()
 
-            byte[] data = response.getData();
+            val data = response.getData()
 
             // Transmit Timestamp is at bytes 40–47
             // Extract seconds (bytes 40–43) and fraction (bytes 44–47)
-            long seconds  = extractUnsignedInt(data, 40);
-            long fraction = extractUnsignedInt(data, 44);
+            val seconds = extractUnsignedInt(data, 40)
+            val fraction = extractUnsignedInt(data, 44)
 
             // Convert NTP timestamp to Unix epoch ms
-            long ntpMs = ((seconds - NTP_UNIX_OFFSET) * 1000L)
-                    + (fraction * 1000L / 0x100000000L);
+            val ntpMs = (((seconds - NTP_UNIX_OFFSET) * 1000L)
+                    + (fraction * 1000L / 0x100000000L))
 
             // Compensate for network round-trip (add half the RTT)
-            long rtt    = responseTime - requestTime;
-            long result = ntpMs + (rtt / 2);
+            val rtt = responseTime - requestTime
+            val result = ntpMs + (rtt / 2)
 
-            Log.d(TAG, server + " → ntpMs=" + ntpMs + " rtt=" + rtt + "ms");
-            return result;
-
-        } catch (Exception e) {
-            Log.w(TAG, "NTP query failed for " + server + ": " + e.getMessage());
-            return -1;
+            Log.d(TAG, server + " → ntpMs=" + ntpMs + " rtt=" + rtt + "ms")
+            return result
+        } catch (e: Exception) {
+            Log.w(TAG, "NTP query failed for " + server + ": " + e.message)
+            return -1
         } finally {
             if (socket != null && !socket.isClosed()) {
-                socket.close();
+                socket.close()
             }
         }
     }
@@ -108,11 +104,11 @@ public class NtpFetcher {
     /**
      * Reads 4 bytes from data[offset] as an unsigned 32-bit integer.
      */
-    private static long extractUnsignedInt(byte[] data, int offset) {
-        long value = 0;
-        for (int i = 0; i < 4; i++) {
-            value = (value << 8) | (data[offset + i] & 0xFF);
+    private fun extractUnsignedInt(data: ByteArray, offset: Int): Long {
+        var value: Long = 0
+        for (i in 0..3) {
+            value = (value shl 8) or (data[offset + i].toInt() and 0xFF).toLong()
         }
-        return value;
+        return value
     }
 }

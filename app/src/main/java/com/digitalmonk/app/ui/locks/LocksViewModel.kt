@@ -26,8 +26,9 @@ data class WizardState(
     val currentStep: Int = 1,
     val planType: String = "STAY_FOCUSED",
     val selectedPackages: Set<String> = emptySet(),
-    val blockMethod: String = "SUSPEND",
+    val blockMethod: String = "INTERSTITIAL",
     val timingMode: String = "ON_DEMAND",
+    val selectedDays: Set<Int> = emptySet(), // 1 for Monday, 7 for Sunday
     val planName: String = "",
     // Step 1 Details
     val allowedMinutes: Int = 0,
@@ -48,6 +49,9 @@ class LocksViewModel(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
+
+    private val _isAppsLoading = MutableStateFlow(true)
+    val isAppsLoading = _isAppsLoading.asStateFlow()
 
     private val _installedApps = MutableStateFlow<List<AppItem>>(emptyList())
 
@@ -77,6 +81,9 @@ class LocksViewModel(
 
     private fun loadApps() {
         viewModelScope.launch(Dispatchers.IO) {
+            _isAppsLoading.value = true
+            val startTime = System.currentTimeMillis()
+            
             val pm = context.packageManager
             val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
             val appItems = packages.mapNotNull { appInfo ->
@@ -92,6 +99,13 @@ class LocksViewModel(
                 )
             }
             _installedApps.value = appItems
+            
+            // Ensure at least 2 seconds of loading time for UX
+            val elapsedTime = System.currentTimeMillis() - startTime
+            if (elapsedTime < 2000) {
+                kotlinx.coroutines.delay(2000 - elapsedTime)
+            }
+            _isAppsLoading.value = false
         }
     }
 
@@ -120,6 +134,32 @@ class LocksViewModel(
             val current = state.selectedPackages.toMutableSet()
             if (current.contains(packageName)) current.remove(packageName) else current.add(packageName)
             state.copy(selectedPackages = current)
+        }
+    }
+
+    fun resetWizard() {
+        _wizardState.value = WizardState()
+    }
+
+    fun clearCurrentStep() {
+        _wizardState.update { state ->
+            when (state.currentStep) {
+                1 -> state.copy(planType = "STAY_FOCUSED")
+                2 -> state.copy(selectedPackages = emptySet(), blockMethod = "SUSPEND")
+                3 -> state.copy(timingMode = "ON_DEMAND", selectedDays = emptySet())
+                4 -> state.copy(allowedMinutes = 0, maxLaunches = 0, intervalMinutes = 60)
+                5 -> state.copy(stopChallenge = "NONE", isAntiUninstall = false)
+                6 -> state.copy(planName = "")
+                else -> state
+            }
+        }
+    }
+
+    fun toggleDaySelection(day: Int) {
+        _wizardState.update { state ->
+            val current = state.selectedDays.toMutableSet()
+            if (current.contains(day)) current.remove(day) else current.add(day)
+            state.copy(selectedDays = current)
         }
     }
 

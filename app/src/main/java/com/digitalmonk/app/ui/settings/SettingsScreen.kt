@@ -7,21 +7,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.digitalmonk.app.data.local.db.AppDatabase
 import com.digitalmonk.app.ui.components.common.SectionLabel
 import com.digitalmonk.app.ui.theme.DigitalMonkTheme
-import androidx.compose.material.icons.rounded.Lock
+import java.lang.RuntimeException
+import kotlin.system.exitProcess
 
 // Reusable local palette variables to sync with your main dashboard skin theme[cite: 1]
 private val BgDeep      = Color(0xFF080E1A) // Matches MainActivity theme background[cite: 1]
@@ -35,6 +41,9 @@ fun SettingsScreen(
     onNavigateToPermissions: () -> Unit,
     onChangePinClick: () -> Unit
 ){
+    val context = LocalContext.current
+    var showWipeConfirm by remember { mutableStateOf(value = false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -55,15 +64,64 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-    SectionLabel("Security")
-            Spacer(modifier = Modifier.height(8.dp))
+        SectionLabel("Security")
+        Spacer(modifier = Modifier.height(8.dp))
 
-            SettingsNavigationCard(
-                    title = "Change PIN",
-                    description = "Update your parent access PIN",
-                    icon = Icons.Rounded.Lock,
-                    onClick = onChangePinClick
-                        )
+        SettingsNavigationCard(
+            title = "Change PIN",
+            description = "Update your parent access PIN",
+            icon = Icons.Rounded.Lock,
+            onClick = onChangePinClick
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SectionLabel("Developer & Support")
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingsNavigationCard(
+            title = "Test Crash Report",
+            description = "Triggers a controlled crash to test Firebase Crashlytics.",
+            icon = Icons.Rounded.BugReport
+        ) {
+            throw RuntimeException("Manual Test Crash from Settings")
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SettingsNavigationCard(
+            title = "Emergency Data Wipe",
+            description = "Clears the database if the app is crashing. Requires app restart.",
+            icon = Icons.Rounded.DeleteForever
+        ) {
+            showWipeConfirm = true
+        }
+    }
+
+    if (showWipeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirm = false },
+            title = { Text("Wipe All Data?") },
+            text = { Text("This will clear your settings and database to fix crashes. The app will close.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        AppDatabase.deleteDatabaseFile(context)
+                        exitProcess(status = 0)
+                    }
+                ) {
+                    Text("Wipe & Close", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = BgCard,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecond
+        )
     }
 }
 

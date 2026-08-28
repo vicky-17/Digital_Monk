@@ -1,89 +1,83 @@
-package com.digitalmonk.app.service.notification;
+package com.digitalmonk.app.service.notification
 
-import android.app.Notification;
-import android.app.NotificationManager;
-import android.content.Context;
-
-import androidx.core.app.NotificationCompat;
-
-import com.digitalmonk.app.core.utils.Constants;
+import android.R
+import android.app.Notification
+import android.app.NotificationManager
+import android.content.Context
+import androidx.core.app.NotificationCompat
+import com.digitalmonk.app.core.utils.Constants
 
 /**
  * Why we made this file:
  * Constructing notifications in Android requires a lot of boilerplate code
  * (Builders, PendingIntents, Icons). Instead of writing this logic directly
  * inside your background services or UI, we centralize it here.
- *
+ * 
  * This keeps your core services clean and ensures all notifications have a
  * consistent look and feel across the entire app.
- *
+ * 
  * What the file name defines:
  * "Notification" indicates the Android component being handled.
  * "Helper" dictates its architectural role as a stateless utility class.
  */
-public class NotificationHelper {
-
+object NotificationHelper {
     // Unique IDs for your notifications so they can be updated or dismissed later
-    public static final int FOREGROUND_SERVICE_ID = 1001;
-    private static final int ALERT_NOTIFICATION_ID = 1002;
-    private static final int WARNING_NOTIFICATION_ID = 1003;
-
-    /**
-     * Private constructor to enforce the Utility Class pattern.
-     */
-    private NotificationHelper() {}
+    const val FOREGROUND_SERVICE_ID: Int = 1001
+    private const val ALERT_NOTIFICATION_ID = 1002
+    private const val WARNING_NOTIFICATION_ID = 1003
 
     /**
      * Builds the persistent, silent notification required to keep your
      * Watchdog or VPN services running infinitely in the background without
      * Android killing them.
      */
-    public static Notification buildGuardianForegroundNotification(Context context) {
+    @JvmStatic
+    fun buildGuardianForegroundNotification(context: Context): Notification {
         // TODO: Replace android.R.drawable.ic_secure with your own R.drawable.ic_monk_logo
 
-        return new NotificationCompat.Builder(context, Constants.CHANNEL_GUARDIAN)
-                .setSmallIcon(android.R.drawable.ic_secure)
-                .setContentTitle("Digital Monk Protection Active")
-                .setContentText("Keeping this device safe in the background.")
-                .setPriority(NotificationCompat.PRIORITY_LOW) // Keeps it silent
-                .setOngoing(true) // Prevents the child from swiping it away
-                .build();
+        return NotificationCompat.Builder(context, Constants.CHANNEL_GUARDIAN)
+            .setSmallIcon(R.drawable.ic_secure)
+            .setContentTitle("Digital Monk Protection Active")
+            .setContentText("Keeping this device safe in the background.")
+            .setPriority(NotificationCompat.PRIORITY_LOW) // Keeps it silent
+            .setOngoing(true) // Prevents the child from swiping it away
+            .build()
     }
 
     /**
      * Fires a high-priority alert (heads-up notification) when a child
      * tries to open a blocked app or access a forbidden website.
      */
-    public static void showBlockAlert(Context context, String blockedItemName) {
-        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager == null) return;
+    fun showBlockAlert(context: Context, blockedItemName: String?) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager?
+        if (manager == null) return
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, Constants.CHANNEL_ALERTS)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
-                .setContentTitle("Access Blocked \uD83D\uDEE1\uFE0F")
-                .setContentText("Attempted to access restricted content: " + blockedItemName)
-                .setPriority(NotificationCompat.PRIORITY_HIGH) // Pops down from the top of the screen
-                .setAutoCancel(true);
+        val builder = NotificationCompat.Builder(context, Constants.CHANNEL_ALERTS)
+            .setSmallIcon(R.drawable.ic_dialog_alert)
+            .setContentTitle("Access Blocked \uD83D\uDEE1\uFE0F")
+            .setContentText("Attempted to access restricted content: " + blockedItemName)
+            .setPriority(NotificationCompat.PRIORITY_HIGH) // Pops down from the top of the screen
+            .setAutoCancel(true)
 
-        manager.notify(ALERT_NOTIFICATION_ID, builder.build());
+        manager.notify(ALERT_NOTIFICATION_ID, builder.build())
     }
 
     /**
      * Fires a warning when a child is approaching their daily screen time limit.
      */
-    public static void showTimeWarning(Context context, String appName, int minutesLeft) {
-        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager == null) return;
+    fun showTimeWarning(context: Context, appName: String, minutesLeft: Int) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager?
+        if (manager == null) return
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, Constants.CHANNEL_SCREEN_TIME)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Screen Time Warning")
-                .setContentText("Only " + minutesLeft + " minutes remaining for " + appName + ".")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setAutoCancel(true);
+        val builder = NotificationCompat.Builder(context, Constants.CHANNEL_SCREEN_TIME)
+            .setSmallIcon(R.drawable.ic_dialog_info)
+            .setContentTitle("Screen Time Warning")
+            .setContentText("Only " + minutesLeft + " minutes remaining for " + appName + ".")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
 
         // We use the app's hashcode as the ID so warnings for different apps don't
         // overwrite each other in the notification tray!
-        manager.notify(appName.hashCode(), builder.build());
+        manager.notify(appName.hashCode(), builder.build())
     }
 }

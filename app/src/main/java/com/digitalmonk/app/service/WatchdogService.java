@@ -35,6 +35,8 @@ import com.digitalmonk.app.service.vpn.DnsVpnService;
 import com.digitalmonk.app.ui.MainActivity;
 import com.digitalmonk.app.core.utils.NtpFetcher;
 import com.digitalmonk.app.ui.block.BlockedPageActivity;
+import android.app.usage.UsageEvents;
+import android.app.usage.UsageStatsManager;
 
 import java.util.Set;
 
@@ -398,7 +400,8 @@ public class WatchdogService extends Service {
 
         com.digitalmonk.app.core.deviceowner.DevicePolicyHelper.INSTANCE.reapplyPolicyIfMismatched(this);
 
-        Set<ProtectionIssue> currentIssues = protectionMonitor.check();
+        String currentApp = getForegroundPackage();
+        Set<ProtectionIssue> currentIssues = protectionMonitor.check(currentApp);
 
         boolean changed = !currentIssues.equals(lastKnownIssues);
 
@@ -468,8 +471,21 @@ public class WatchdogService extends Service {
                 break;
 
             case ACCESSIBILITY_DISABLED:
-                Log.w(TAG, "Protection: Accessibility off — showing block screen");
-                startActivity(BlockedPageActivity.Companion.accessibilityDisabled(this));
+                if (prefs.isBankingBypassEnabled()) {
+                    // Specialized block for Banking Mode: Toast + Home
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                        android.widget.Toast.makeText(this, 
+                            "Protection: This app is blocked during Banking Mode. Re-enable Accessibility to use it.", 
+                            android.widget.Toast.LENGTH_LONG).show();
+                    });
+                    Intent homeIntent = new Intent(Intent.ACTION_MAIN);
+                    homeIntent.addCategory(Intent.CATEGORY_HOME);
+                    homeIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(homeIntent);
+                } else {
+                    Log.w(TAG, "Protection: Accessibility off — showing block screen");
+                    startActivity(BlockedPageActivity.Companion.accessibilityDisabled(this));
+                }
                 break;
 
             case OVERLAY_PERMISSION_MISSING:
@@ -514,5 +530,21 @@ public class WatchdogService extends Service {
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build();
+    }
+
+    private String getForegroundPackage() {
+        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        if (usm == null) return null;
+        long time = System.currentTimeMillis();
+        UsageEvents events = usm.queryEvents(time - 3000, time);
+        UsageEvents.Event event = new UsageEvents.Event();
+        String lastPackage = null;
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event);
+            if (event.getEventType() == UsageEvents.Event.ACTIVITY_RESUMED) {
+                lastPackage = event.getPackageName();
+            }
+        }
+        return lastPackage;
     }
 }

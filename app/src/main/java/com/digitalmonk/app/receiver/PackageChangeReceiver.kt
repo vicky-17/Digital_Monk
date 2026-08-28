@@ -1,8 +1,8 @@
-package com.digitalmonk.app.receiver;
+package com.digitalmonk.app.receiver
 
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 
 /**
  * Why we made this file:
@@ -12,28 +12,24 @@ import android.content.Intent;
  * * Eventually, you will use this class to automatically block new apps by default,
  * apply a standard screen time limit, or immediately notify the parent's dashboard
  * on your Vercel/MongoDB backend.
- *
+ * 
  * What the file name defines:
  * "Package" is the Android system's term for an application (e.g., com.whatsapp).
  * "Change" signifies an installation, removal, or update of that package.
  */
-public class PackageChangeReceiver extends BroadcastReceiver {
-
-    private static final String TAG = "PackageChangeReceiver";
-
-    @Override
-    public void onReceive(Context context, Intent intent) {
+class PackageChangeReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
         // Standard Java safety checks to prevent NullPointerExceptions
         if (intent == null || intent.getAction() == null) {
-            return;
+            return
         }
 
-        String action = intent.getAction();
+        val action = intent.getAction()
 
         // Extract the package name of the app that was installed/removed
-        String packageName = null;
+        var packageName: String? = null
         if (intent.getData() != null) {
-            packageName = intent.getData().getSchemeSpecificPart();
+            packageName = intent.getData()!!.getSchemeSpecificPart()
         }
 
         // TODO: Handle app install/uninstall events.
@@ -51,5 +47,9 @@ public class PackageChangeReceiver extends BroadcastReceiver {
             // 1. Clean up local database rules for this app
         }
         */
+    }
+
+    companion object {
+        private const val TAG = "PackageChangeReceiver"
     }
 }

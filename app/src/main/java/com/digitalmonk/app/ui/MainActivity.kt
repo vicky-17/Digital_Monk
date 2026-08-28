@@ -49,6 +49,7 @@ import com.digitalmonk.app.ui.auth.PinSetupActivity
 import com.digitalmonk.app.ui.permissions.PermissionsScreen
 import com.digitalmonk.app.ui.settings.SettingsScreen
 import com.digitalmonk.app.ui.sidebar.PermissionsSidebar
+import com.digitalmonk.app.ui.auth.AccountScreen
 import com.digitalmonk.app.ui.theme.DigitalMonkTheme
 import kotlinx.coroutines.delay
 import com.digitalmonk.app.ui.dashboard.DashboardScreen
@@ -86,6 +87,9 @@ sealed class AppDestination {
 
     /** Full-screen Permissions screen — no TopBar / BottomBar */
     object Permissions : AppDestination()
+
+    /** Full-screen Account / Login screen */
+    object Account : AppDestination()
 }
 
 data class PermissionsState(
@@ -285,7 +289,7 @@ class MainActivity : BaseActivity() {
                                     },
                                     actions = {
                                         IconButton(
-                                            onClick  = {},
+                                            onClick  = { destination = AppDestination.Account },
                                             modifier = Modifier.size(48.dp)
                                         ) {
                                             Icon(
@@ -380,6 +384,13 @@ class MainActivity : BaseActivity() {
                 // Only this composable is in the tree — Scaffold is fully gone.
                 AppDestination.Permissions -> {
                     PermissionsScreen(
+                        onBackClick = { destination = AppDestination.Main }
+                    )
+                }
+
+                // ── ACCOUNT full-screen ───────────────────────────────────────
+                AppDestination.Account -> {
+                    AccountScreen(
                         onBackClick = { destination = AppDestination.Main }
                     )
                 }

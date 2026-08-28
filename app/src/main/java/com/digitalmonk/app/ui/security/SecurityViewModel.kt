@@ -2,6 +2,7 @@ package com.digitalmonk.app.ui.security
 
 import android.app.admin.DevicePolicyManager
 import android.content.Context
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.digitalmonk.app.data.local.prefs.PrefsManager
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.digitalmonk.app.core.deviceowner.DevicePolicyHelper
+import com.digitalmonk.app.service.accessibility.GuardianAccessibilityService
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
@@ -55,6 +57,22 @@ class SecurityViewModel(
     // Applying state — lets the UI show a spinner while the blocking DoT check runs
     private val _isApplyingPrivateDns = MutableStateFlow(false)
     val isApplyingPrivateDns: StateFlow<Boolean> = _isApplyingPrivateDns.asStateFlow()
+
+    // ── Banking Mode States ──────────────────────────────────────────────────
+    private val _isBankingBypassEnabled = MutableStateFlow(prefsManager.isBankingBypassEnabled)
+    val isBankingBypassEnabled: StateFlow<Boolean> = _isBankingBypassEnabled.asStateFlow()
+
+    private val _bankingBypassPackage = MutableStateFlow(prefsManager.bankingBypassPackage)
+    val bankingBypassPackage: StateFlow<String?> = _bankingBypassPackage.asStateFlow()
+
+    private val _showBankingAppPicker = MutableStateFlow(false)
+    val showBankingAppPicker: StateFlow<Boolean> = _showBankingAppPicker.asStateFlow()
+
+    private val _bankingApps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val bankingApps: StateFlow<List<AppInfo>> = _bankingApps.asStateFlow()
+
+    private val _isCheckingBypassTimeout = MutableStateFlow(false)
+    val isCheckingBypassTimeout: StateFlow<Boolean> = _isCheckingBypassTimeout.asStateFlow()
 
     // Surfaces failures instead of swallowing them silently
     private val _privateDnsError = MutableStateFlow<String?>(null)
@@ -358,7 +376,7 @@ class SecurityViewModel(
         }
     }
 
-    private fun executeToggleForceStop(packageName: String, blocked: Boolean) {
+    fun executeToggleForceStop(packageName: String, blocked: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val currentList = DevicePolicyHelper.getControlDisabledPackages(context).toMutableList()
             if (blocked) {
@@ -376,6 +394,101 @@ class SecurityViewModel(
                     Toast.makeText(context, "Force Stop ${if (blocked) "Disabled" else "Enabled"} for $packageName", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    // ── Banking Mode Logic ────────────────────────────────────────────────────
+
+    fun onBankingBypassToggleRequested(enabled: Boolean) {
+        if (enabled) {
+            _showBankingAppPicker.value = true
+            fetchAppsForBankingMode()
+        } else {
+            // "Finish" Banking Mode
+            disableBankingBypass()
+            // Redirect to accessibility settings to turn it back ON
+            openAccessibilitySettings()
+        }
+    }
+
+    private fun openAccessibilitySettings() {
+        val intent = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    fun disableBankingBypass() {
+        prefsManager.isBankingBypassEnabled = false
+        prefsManager.bankingBypassPackage = null
+        prefsManager.bankingBypassStartTime = 0L
+        _isBankingBypassEnabled.value = false
+        _bankingBypassPackage.value = null
+    }
+
+    fun confirmBankingBypass(packageName: String) {
+        prefsManager.isBankingBypassEnabled = true
+        prefsManager.bankingBypassPackage = packageName
+        prefsManager.bankingBypassStartTime = System.currentTimeMillis()
+        _isBankingBypassEnabled.value = true
+        _bankingBypassPackage.value = packageName
+        _showBankingAppPicker.value = false
+
+        // ONE-TAP TURN OFF: Disable accessibility service programmatically
+        GuardianAccessibilityService.disableService()
+        
+        Toast.makeText(context, "Banking Mode Active. Accessibility turned OFF for you.", Toast.LENGTH_LONG).show()
+    }
+
+    fun dismissBankingAppPicker() {
+        _showBankingAppPicker.value = false
+    }
+
+    private fun fetchAppsForBankingMode() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoadingApps.value = true
+            val pm = context.packageManager
+            val blacklistKeywords = listOf("facebook", "instagram", "tiktok", "youtube", "snapchat", "twitter", "x.android", "netflix", "primevideo", "disney", "hotstar")
+            val bankingKeywords = listOf("bank", "pay", "wallet", "finance", "invest", "crypto", "trading", "cash", "upi", "stock")
+
+            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .filter { app ->
+                    // Exclude system apps that aren't updated
+                    ((app.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || (app.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) &&
+                    app.packageName != context.packageName
+                }
+                .filter { app ->
+                    // Layer 1: Metadata Check
+                    val category = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.category else -1
+                    category != ApplicationInfo.CATEGORY_SOCIAL && category != ApplicationInfo.CATEGORY_VIDEO && category != ApplicationInfo.CATEGORY_GAME
+                }
+                .filter { app ->
+                    // Layer 4: Hardcoded Safety List
+                    !blacklistKeywords.any { app.packageName.lowercase().contains(it) }
+                }
+                .map { app ->
+                    val name = app.loadLabel(pm).toString()
+                    val hasSmsPerm = try {
+                        val pkgInfo = pm.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS)
+                        pkgInfo.requestedPermissions?.any { it.contains("SMS") } == true
+                    } catch (e: Exception) { false }
+
+                    val isSuggested = hasSmsPerm || bankingKeywords.any { name.lowercase().contains(it) || app.packageName.lowercase().contains(it) }
+
+                    Triple(app, name, isSuggested)
+                }
+                .sortedWith(compareByDescending<Triple<ApplicationInfo, String, Boolean>> { it.third }.thenBy { it.second })
+                .map { (app, name, _) ->
+                    AppInfo(
+                        packageName = app.packageName,
+                        name = name,
+                        icon = app.loadIcon(pm),
+                        isUninstallBlocked = false,
+                        isForceStopBlocked = false
+                    )
+                }
+
+            _bankingApps.value = apps
+            _isLoadingApps.value = false
         }
     }
 

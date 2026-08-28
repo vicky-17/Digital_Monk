@@ -1,23 +1,19 @@
-package com.digitalmonk.app.service.vpn.blocklist;
+package com.digitalmonk.app.service.vpn.blocklist
 
-import android.content.Context;
-import android.content.SharedPreferences;
-import android.util.Log;
-
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import android.content.Context
+import android.util.Log
+import java.io.BufferedReader
+import java.io.BufferedWriter
+import java.io.FileInputStream
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import kotlin.concurrent.Volatile
 
 /**
  * Why we made this file:
@@ -25,208 +21,214 @@ import java.util.concurrent.Executors;
  * Checking a database for every single network packet is too slow. This manager
  * loads all blocked domains (from local seeds, cached files, and remote servers)
  * directly into device RAM (Memory) for lightning-fast O(1) lookups.
- *
+ * 
  * What the file name defines:
  * "Blocklist" identifies the data being managed (forbidden domains).
  * "Manager" means it controls the fetching, caching, and querying of this data.
  */
-public class BlocklistManager {
-
-    private static final String TAG = "BlocklistManager";
-    private static final String PREFS_NAME = "blocklist_prefs";
-    private static final String KEY_LAST_UPDATE = "last_update_epoch";
-    private static final long UPDATE_INTERVAL_MS = 24L * 60 * 60 * 1000; // 24 hours
-    private static final String CACHE_FILE_NAME = "blocklist_cache.txt";
-
-    private static final List<String> REMOTE_BLOCKLIST_URLS = Arrays.asList(
-            "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts"
-            // "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/porn.txt"
-    );
-
+class BlocklistManager(context: Context) {
     // Using ConcurrentHashMap.newKeySet() instead of a standard HashSet ensures
     // thread safety when the background updater and the VPN network thread access it simultaneously.
-    private final Set<String> combinedBlocklist = ConcurrentHashMap.newKeySet();
-    private volatile boolean isLoaded = false;
-    private final Context context;
+    private val combinedBlocklist: MutableSet<String?> = ConcurrentHashMap.newKeySet<String?>()
+
+    @Volatile
+    private var isLoaded = false
+    private val context: Context
 
     // Replaces Kotlin Coroutines (Dispatchers.IO)
-    private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
-    public BlocklistManager(Context context) {
-        this.context = context.getApplicationContext();
+    init {
+        this.context = context.getApplicationContext()
     }
 
     /**
      * Initializes the blocklist. Call this when the VPN service starts.
      * In Java, we use a callback (Runnable) since we don't have Kotlin's 'suspend' keyword.
      */
-    public void initialize(Runnable onComplete) {
+    fun initialize(onComplete: Runnable?) {
         if (isLoaded) {
-            if (onComplete != null) onComplete.run();
-            return;
+            if (onComplete != null) onComplete.run()
+            return
         }
 
-        ioExecutor.execute(() -> {
+        ioExecutor.execute(Runnable {
             // Always start with the hard-coded seed list
-            combinedBlocklist.addAll(PornDomainBlocklist.getDomains());
-            Log.d(TAG, "Seed list loaded: " + PornDomainBlocklist.getDomains().size() + " domains");
+            combinedBlocklist.addAll(PornDomainBlocklist.domains)
+            Log.d(TAG, "Seed list loaded: " + PornDomainBlocklist.domains.size + " domains")
 
             // Load cached remote list from disk
-            loadCachedRemoteList();
+            loadCachedRemoteList()
 
             // Fetch updated remote list if enough time has passed
             if (shouldUpdateRemoteList()) {
-                fetchRemoteBlocklists();
+                fetchRemoteBlocklists()
             }
 
-            isLoaded = true;
-            Log.i(TAG, "✅ Blocklist ready: " + combinedBlocklist.size() + " total domains");
-
+            isLoaded = true
+            Log.i(TAG, "✅ Blocklist ready: " + combinedBlocklist.size + " total domains")
             if (onComplete != null) {
-                onComplete.run();
+                onComplete.run()
             }
-        });
+        })
     }
 
     /**
      * Fast check if a domain should be blocked.
      */
-    public boolean isBlocked(String domain) {
-        if (domain == null || domain.isEmpty()) return false;
+    fun isBlocked(domain: String?): Boolean {
+        if (domain == null || domain.isEmpty()) return false
 
-        String lower = domain.toLowerCase();
+        val lower = domain.lowercase(Locale.getDefault())
 
         // 1. Check exact match O(1)
-        if (combinedBlocklist.contains(lower)) return true;
+        if (combinedBlocklist.contains(lower)) return true
 
         // 2. Check subdomain match O(N) (e.g., "www.pornhub.com" matches "pornhub.com")
-        for (String blocked : combinedBlocklist) {
+        for (blocked in combinedBlocklist) {
             if (lower.endsWith("." + blocked)) {
-                return true;
+                return true
             }
         }
-        return false;
+        return false
     }
 
-    public void addCustomDomain(String domain) {
+    fun addCustomDomain(domain: String?) {
         if (domain != null) {
-            combinedBlocklist.add(domain.toLowerCase().trim());
-            Log.d(TAG, "Custom domain added: " + domain);
+            combinedBlocklist.add(domain.lowercase(Locale.getDefault()).trim { it <= ' ' })
+            Log.d(TAG, "Custom domain added: " + domain)
         }
     }
 
-    public void removeCustomDomain(String domain) {
+    fun removeCustomDomain(domain: String?) {
         if (domain != null) {
-            combinedBlocklist.remove(domain.toLowerCase().trim());
+            combinedBlocklist.remove(domain.lowercase(Locale.getDefault()).trim { it <= ' ' })
         }
     }
 
     // ── Private I/O Methods ───────────────────────────────────────────────────
-
-    private void loadCachedRemoteList() {
-        File file = context.getFileStreamPath(CACHE_FILE_NAME);
-        if (!file.exists()) return;
+    private fun loadCachedRemoteList() {
+        val file = context.getFileStreamPath(CACHE_FILE_NAME)
+        if (!file.exists()) return
 
         // try-with-resources automatically closes the streams to prevent memory leaks
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
-            String line;
-            int count = 0;
-            while ((line = reader.readLine()) != null) {
-                String domain = parseHostsLine(line);
-                if (domain != null) {
-                    combinedBlocklist.add(domain);
-                    count++;
+        try {
+            BufferedReader(InputStreamReader(FileInputStream(file))).use { reader ->
+                var line: String?
+                var count = 0
+                while ((reader.readLine().also { line = it }) != null) {
+                    val domain = parseHostsLine(line!!)
+                    if (domain != null) {
+                        combinedBlocklist.add(domain)
+                        count++
+                    }
                 }
+                Log.d(TAG, "Loaded " + count + " domains from cache")
             }
-            Log.d(TAG, "Loaded " + count + " domains from cache");
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to load cached blocklist: " + e.getMessage());
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load cached blocklist: " + e.message)
         }
     }
 
-    private void fetchRemoteBlocklists() {
-        int totalFetched = 0;
+    private fun fetchRemoteBlocklists() {
+        var totalFetched = 0
 
-        for (String urlString : REMOTE_BLOCKLIST_URLS) {
-            HttpURLConnection connection = null;
+        for (urlString in REMOTE_BLOCKLIST_URLS) {
+            var connection: HttpURLConnection? = null
             try {
-                Log.d(TAG, "Fetching blocklist from: " + urlString);
-                URL url = new URL(urlString);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setConnectTimeout(10_000);
-                connection.setReadTimeout(30_000);
+                Log.d(TAG, "Fetching blocklist from: " + urlString)
+                val url = URL(urlString)
+                connection = url.openConnection() as HttpURLConnection?
+                connection!!.setConnectTimeout(10000)
+                connection.setReadTimeout(30000)
 
-                Set<String> newDomains = ConcurrentHashMap.newKeySet();
+                val newDomains: MutableSet<String?> = ConcurrentHashMap.newKeySet<String?>()
 
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        String domain = parseHostsLine(line);
+                BufferedReader(InputStreamReader(connection.getInputStream())).use { reader ->
+                    var line: String?
+                    while ((reader.readLine().also { line = it }) != null) {
+                        val domain = parseHostsLine(line!!)
                         if (domain != null) {
-                            newDomains.add(domain);
+                            newDomains.add(domain)
                         }
                     }
                 }
-
-                combinedBlocklist.addAll(newDomains);
-                totalFetched += newDomains.size();
+                combinedBlocklist.addAll(newDomains)
+                totalFetched += newDomains.size
 
                 // Cache to disk immediately
-                cacheBlocklist(newDomains);
-                Log.i(TAG, "Fetched " + newDomains.size() + " domains from " + urlString);
-
-            } catch (Exception e) {
-                Log.w(TAG, "Failed to fetch from " + urlString + ": " + e.getMessage());
+                cacheBlocklist(newDomains)
+                Log.i(TAG, "Fetched " + newDomains.size + " domains from " + urlString)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch from " + urlString + ": " + e.message)
             } finally {
-                if (connection != null) connection.disconnect();
+                if (connection != null) connection.disconnect()
             }
         }
 
         if (totalFetched > 0) {
-            markUpdateTime();
-            Log.i(TAG, "Remote update complete: " + totalFetched + " new domains");
+            markUpdateTime()
+            Log.i(TAG, "Remote update complete: " + totalFetched + " new domains")
         }
     }
 
-    private void cacheBlocklist(Set<String> domains) {
-        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                context.openFileOutput(CACHE_FILE_NAME, Context.MODE_PRIVATE)))) {
-            for (String domain : domains) {
-                writer.write("0.0.0.0 " + domain + "\n");
+    private fun cacheBlocklist(domains: MutableSet<String?>) {
+        try {
+            BufferedWriter(
+                OutputStreamWriter(
+                    context.openFileOutput(CACHE_FILE_NAME, Context.MODE_PRIVATE)
+                )
+            ).use { writer ->
+                for (domain in domains) {
+                    writer.write("0.0.0.0 " + domain + "\n")
+                }
             }
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to cache blocklist: " + e.getMessage());
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to cache blocklist: " + e.message)
         }
     }
 
-    private String parseHostsLine(String line) {
-        String trimmed = line.trim();
-        if (trimmed.isEmpty() || trimmed.startsWith("#")) return null;
+    private fun parseHostsLine(line: String): String? {
+        val trimmed = line.trim { it <= ' ' }
+        if (trimmed.isEmpty() || trimmed.startsWith("#")) return null
 
-        String[] parts = trimmed.split("\\s+");
-        if (parts.length < 2) return null;
+        val parts: Array<String?> =
+            trimmed.split("\\s+".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+        if (parts.size < 2) return null
 
-        String ip = parts[0];
-        if (!"0.0.0.0".equals(ip) && !"127.0.0.1".equals(ip)) return null;
+        val ip = parts[0]
+        if ("0.0.0.0" != ip && "127.0.0.1" != ip) return null
 
-        String domain = parts[1].toLowerCase();
+        val domain = parts[1]!!.lowercase(Locale.getDefault())
 
         // Skip localhost and invalid entries
-        if ("localhost".equals(domain) || domain.contains("#") || domain.length() < 4) return null;
+        if ("localhost" == domain || domain.contains("#") || domain.length < 4) return null
 
-        return domain;
+        return domain
     }
 
-    private boolean shouldUpdateRemoteList() {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        long lastUpdate = prefs.getLong(KEY_LAST_UPDATE, 0L);
-        return System.currentTimeMillis() - lastUpdate > UPDATE_INTERVAL_MS;
+    private fun shouldUpdateRemoteList(): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastUpdate = prefs.getLong(KEY_LAST_UPDATE, 0L)
+        return System.currentTimeMillis() - lastUpdate > UPDATE_INTERVAL_MS
     }
 
-    private void markUpdateTime() {
+    private fun markUpdateTime() {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
-                .apply();
+            .edit()
+            .putLong(KEY_LAST_UPDATE, System.currentTimeMillis())
+            .apply()
+    }
+
+    companion object {
+        private const val TAG = "BlocklistManager"
+        private const val PREFS_NAME = "blocklist_prefs"
+        private const val KEY_LAST_UPDATE = "last_update_epoch"
+        private val UPDATE_INTERVAL_MS = 24L * 60 * 60 * 1000 // 24 hours
+        private const val CACHE_FILE_NAME = "blocklist_cache.txt"
+
+        private val REMOTE_BLOCKLIST_URLS = mutableListOf<String?>(
+            "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn/hosts" // "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/porn.txt"
+        )
     }
 }

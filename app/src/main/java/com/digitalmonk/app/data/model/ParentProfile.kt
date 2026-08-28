@@ -1,4 +1,4 @@
-package com.digitalmonk.app.data.model;
+package com.digitalmonk.app.data.model
 
 /**
  * Why we made this file:
@@ -7,15 +7,15 @@ package com.digitalmonk.app.data.model;
  * dashboard. This class holds their basic identity information (like a unique ID
  * and their display name) so it can be passed around the UI or synced with
  * a remote database like Firebase or MongoDB.
- *
+ * 
  * What the file name defines:
  * "Parent" specifies the role of the user this data represents.
  * "Profile" indicates that this class holds account-related identity information.
  */
-public class ParentProfile {
-
-    private final String id;
-    private final String name;
+class ParentProfile {
+    // Getters for immutability
+    val id: String?
+    val name: String?
 
     /**
      * Default constructor.
@@ -23,26 +23,16 @@ public class ParentProfile {
      * In Java, we achieve this by using "Constructor Overloading" — creating
      * a constructor with no arguments that sets the default values.
      */
-    public ParentProfile() {
-        this.id = "";
-        this.name = "";
+    constructor() {
+        this.id = ""
+        this.name = ""
     }
 
     /**
      * Full constructor to initialize the profile with specific data.
      */
-    public ParentProfile(String id, String name) {
-        this.id = id;
-        this.name = name;
-    }
-
-    // Getters for immutability
-
-    public String getId() {
-        return id;
-    }
-
-    public String getName() {
-        return name;
+    constructor(id: String?, name: String?) {
+        this.id = id
+        this.name = name
     }
 }

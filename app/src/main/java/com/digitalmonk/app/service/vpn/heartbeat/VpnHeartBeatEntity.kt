@@ -1,7 +1,8 @@
-package com.digitalmonk.app.service.vpn.heartbeat;
+package com.digitalmonk.app.service.vpn.heartbeat
 
-import androidx.room.Entity;
-import androidx.room.PrimaryKey;
+import androidx.room.Entity
+import androidx.room.Ignore
+import androidx.room.PrimaryKey
 
 /**
  * Why we made this file:
@@ -11,65 +12,30 @@ import androidx.room.PrimaryKey;
  * isn't "ALIVE" or is too old, the Watchdog knows it needs to revive the VPN.
  */
 @Entity(tableName = "vpn_heartbeat")
-public class VpnHeartBeatEntity {
-
-    public static final String TYPE_ALIVE = "ALIVE";
-    public static final String TYPE_STOPPED = "STOPPED";
-
+class VpnHeartBeatEntity {
+    // ── Getters and Setters Required by Room ──────────────────────────────────
     @PrimaryKey(autoGenerate = true)
-    private long id;
+    var id: Long = 0
 
-    private String type;
-    private long timestamp;
+    var type: String? = null
+    var timestamp: Long = 0
 
     /**
      * Default Constructor for Room.
      */
-    public VpnHeartBeatEntity() {}
+    constructor()
 
     /**
      * Convenience constructor mimicking Kotlin's default timestamp parameter.
      */
-    public VpnHeartBeatEntity(String type) {
-        this.type = type;
-        this.timestamp = System.currentTimeMillis();
+    @Ignore
+    constructor(type: String?) {
+        this.type = type
+        this.timestamp = System.currentTimeMillis()
     }
 
-    /**
-     * Full constructor.
-     */
-    public VpnHeartBeatEntity(String type, long timestamp) {
-        this.type = type;
-        this.timestamp = timestamp;
-    }
-
-    public boolean isAlive() {
-        return TYPE_ALIVE.equals(type);
-    }
-
-    // ── Getters and Setters Required by Room ──────────────────────────────────
-
-    public long getId() {
-        return id;
-    }
-
-    public void setId(long id) {
-        this.id = id;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public long getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(long timestamp) {
-        this.timestamp = timestamp;
+    companion object {
+        const val TYPE_ALIVE: String = "ALIVE"
+        const val TYPE_STOPPED: String = "STOPPED"
     }
 }

@@ -1,47 +1,44 @@
-package com.digitalmonk.app.service.accessibility.handlers;
+package com.digitalmonk.app.service.accessibility.handlers
 
-import android.accessibilityservice.AccessibilityService;
-import android.util.Log;
-import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
+import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.util.Log
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.service.monitor.SettingsAppMonitor
 
-import com.digitalmonk.app.data.local.prefs.PrefsManager;
-import com.digitalmonk.app.service.monitor.SettingsAppMonitor;
-
-public class AppBlockHandler {
-
-    private static final String TAG = "AppBlockHandler";
-
-    private final PrefsManager   prefs;
-    private final ActionPerformer actionPerformer;
-
-    public interface ActionPerformer {
-        boolean performAction(int action);
+class AppBlockHandler(
+    private val prefs: PrefsManager,
+    private val actionPerformer: ActionPerformer
+) {
+    fun interface ActionPerformer {
+        fun performAction(action: Int): Boolean
     }
 
-    public AppBlockHandler(PrefsManager prefs, ActionPerformer actionPerformer) {
-        this.prefs           = prefs;
-        this.actionPerformer = actionPerformer;
-    }
-
-    public void handle(AccessibilityNodeInfo root,
-                       String packageName,
-                       int eventType,
-                       android.content.Context context) {
-
-        if (packageName == null) return;
+    fun handle(
+        root: AccessibilityNodeInfo?,
+        packageName: String?,
+        eventType: Int,
+        context: Context?
+    ) {
+        if (packageName == null) return
 
         if (SettingsAppMonitor.SETTINGS_PACKAGES.contains(packageName)) {
-            return;
+            return
         }
 
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            return;
+            return
         }
 
-        if (!prefs.isAppBlocked(packageName)) return;
+        if (!prefs.isAppBlocked(packageName)) return
 
-        Log.d(TAG, "🚫 Blocked: " + packageName + " → HOME");
-        actionPerformer.performAction(AccessibilityService.GLOBAL_ACTION_HOME);
+        Log.d(TAG, "🚫 Blocked: " + packageName + " → HOME")
+        actionPerformer.performAction(AccessibilityService.GLOBAL_ACTION_HOME)
+    }
+
+    companion object {
+        private const val TAG = "AppBlockHandler"
     }
 }

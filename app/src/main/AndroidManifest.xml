@@ -167,6 +167,15 @@
                 android:value="settings_page_block_overlay" />
         </service>
 
+        <!-- ── Firebase Cloud Messaging ─────────────────────────────────── -->
+        <service
+            android:name=".messaging.MonkMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
 
         <!-- ════════════════════════════════════════════════════════════════
              RECEIVERS

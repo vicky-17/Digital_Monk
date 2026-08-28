@@ -144,6 +144,18 @@ class PrefsManager(context: Context) {
             prefs.edit { putLong(KEY_PREMIUM_EXPIRY, value) }
         }
 
+    var userUid: String?
+        get() = prefs.getString(KEY_USER_UID, null)
+        set(value) {
+            prefs.edit { putString(KEY_USER_UID, value) }
+        }
+
+    var userEmail: String?
+        get() = prefs.getString(KEY_USER_EMAIL, null)
+        set(value) {
+            prefs.edit { putString(KEY_USER_EMAIL, value) }
+        }
+
     var isSafeSearchEnabled: Boolean
         // Add to PrefsManager.java
         get() = prefs.getBoolean("safe_search_enabled", false)
@@ -320,6 +332,18 @@ class PrefsManager(context: Context) {
         }
 
 
+    var isBankingBypassEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BANKING_BYPASS_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_BANKING_BYPASS_ENABLED, value) }
+
+    var bankingBypassPackage: String?
+        get() = prefs.getString(KEY_BANKING_BYPASS_PACKAGE, null)
+        set(value) = prefs.edit { putString(KEY_BANKING_BYPASS_PACKAGE, value) }
+
+    var bankingBypassStartTime: Long
+        get() = prefs.getLong(KEY_BANKING_BYPASS_START_TIME, 0L)
+        set(value) = prefs.edit { putLong(KEY_BANKING_BYPASS_START_TIME, value) }
+
     companion object {
         // ── Keys ──────────────────────────────────────────────────────────────────
         private const val KEY_PIN = "parent_pin"
@@ -337,6 +361,8 @@ class PrefsManager(context: Context) {
         private const val KEY_LAST_HEARTBEAT_TS = "last_vpn_heartbeat_ts"
         private const val KEY_IS_PREMIUM = "is_premium"
         private const val KEY_PREMIUM_EXPIRY = "premium_expiry"
+        private const val KEY_USER_UID = "user_uid"
+        private const val KEY_USER_EMAIL = "user_email"
 
         private const val KEY_LOCK_UNTIL_TIMESTAMP = "lock_until_timestamp"
 
@@ -354,6 +380,10 @@ class PrefsManager(context: Context) {
         private const val KEY_CUSTOM_DNS_LIST = "custom_dns_list"
         private const val KEY_PRIVATE_DNS_LOCKED = "private_dns_locked"
         private const val KEY_BLOCKED_WEBSITES = "blocked_websites"
+
+        private const val KEY_BANKING_BYPASS_ENABLED = "banking_bypass_enabled"
+        private const val KEY_BANKING_BYPASS_PACKAGE = "banking_bypass_package"
+        private const val KEY_BANKING_BYPASS_START_TIME = "banking_bypass_start_time"
     }
 
     var blockedWebsites: MutableSet<String>

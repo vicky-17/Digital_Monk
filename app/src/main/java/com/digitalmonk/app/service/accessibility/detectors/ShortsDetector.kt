@@ -1,63 +1,61 @@
-package com.digitalmonk.app.service.accessibility.detectors;
+package com.digitalmonk.app.service.accessibility.detectors
 
-import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeInfo
+import java.util.Collections
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+object ShortsDetector {
+    private val BLOCKED_PACKAGES: MutableSet<String?> = Collections.unmodifiableSet<String?>(
+        HashSet<String?>(
+            mutableListOf<String?>(
+                "com.ss.android.ugc.trill",
+                "com.zhiliaoapp.musically",
+                "com.ss.android.ugc.aweme"
+            )
+        )
+    )
 
-public class ShortsDetector {
-
-    private static final Set<String> BLOCKED_PACKAGES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "com.ss.android.ugc.trill",
-            "com.zhiliaoapp.musically",
-            "com.ss.android.ugc.aweme"
-    )));
-
-    private static final Set<String> SHORTS_VIEW_IDS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "com.google.android.youtube:id/reel_recycler",        // YouTube Shorts
-            "app.revanced.android.youtube:id/reel_recycler",      // ReVanced YouTube
-            "com.instagram.android:id/root_clips_layout",         // Instagram Reels
-            "com.instagram.android:id/reply_bar_container"        // Instagram Inbox Reels
-    )));
-
-    /**
-     * Private constructor for Utility Class.
-     */
-    private ShortsDetector() {}
+    private val SHORTS_VIEW_IDS: MutableSet<String> = Collections.unmodifiableSet<String?>(
+        HashSet<String?>(
+            mutableListOf<String?>(
+                "com.google.android.youtube:id/reel_recycler",  // YouTube Shorts
+                "app.revanced.android.youtube:id/reel_recycler",  // ReVanced YouTube
+                "com.instagram.android:id/root_clips_layout",  // Instagram Reels
+                "com.instagram.android:id/reply_bar_container" // Instagram Inbox Reels
+            )
+        )
+    )
 
     /**
      * Determines if the current screen contains short-form video content.
      */
-    public static boolean shouldBlock(AccessibilityNodeInfo rootNode, String packageName) {
-        if (packageName == null) return false;
+    @JvmStatic
+    fun shouldBlock(rootNode: AccessibilityNodeInfo?, packageName: String?): Boolean {
+        if (packageName == null) return false
 
         // 1. Check if the entire app is blocked (e.g., TikTok)
-        if (BLOCKED_PACKAGES.contains(packageName)) return true;
+        if (BLOCKED_PACKAGES.contains(packageName)) return true
 
         // 2. Check if a specific "Shorts" View ID is on the screen
-        if (rootNode == null) return false;
+        if (rootNode == null) return false
 
-        for (String viewId : SHORTS_VIEW_IDS) {
+        for (viewId in SHORTS_VIEW_IDS) {
             if (hasViewId(rootNode, viewId)) {
-                return true;
+                return true
             }
         }
 
-        return false;
+        return false
     }
 
     /**
      * Searches the Android UI hierarchy for a specific View ID.
      */
-    private static boolean hasViewId(AccessibilityNodeInfo root, String viewId) {
+    private fun hasViewId(root: AccessibilityNodeInfo, viewId: String): Boolean {
         try {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByViewId(viewId);
-            return nodes != null && !nodes.isEmpty();
-        } catch (Exception e) {
-            return false;
+            val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+            return nodes != null && !nodes.isEmpty()
+        } catch (e: Exception) {
+            return false
         }
     }
 }

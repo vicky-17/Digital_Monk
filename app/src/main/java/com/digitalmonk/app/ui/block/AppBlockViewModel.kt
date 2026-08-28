@@ -22,7 +22,7 @@ class AppBlockViewModel(private val repository: UsageRepository) : BaseViewModel
         viewModelScope.launch {
             // Calling your Java Repository method
             val logs = repository.allLogs
-            _appList.value = logs ?: emptyList()
+            _appList.value = logs
         }
     }
 

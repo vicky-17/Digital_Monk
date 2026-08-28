@@ -74,6 +74,13 @@ fun SecurityScreen(prefs: PrefsManager) {
     val isPrivateDnsLocked by viewModel.isPrivateDnsLocked.collectAsState()
     val showAppConfirmDialog by viewModel.showAppConfirmDialog.collectAsState()
 
+    // ── Banking Mode States ──────────────────────────────────────────────────
+    val isBankingBypassEnabled by viewModel.isBankingBypassEnabled.collectAsState()
+    val bankingBypassPackage by viewModel.bankingBypassPackage.collectAsState()
+    val showBankingAppPicker by viewModel.showBankingAppPicker.collectAsState()
+    val bankingApps by viewModel.bankingApps.collectAsState()
+    val isLoadingApps by viewModel.isLoadingApps.collectAsState()
+
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(prefs.isKeepVpnAlive) }
     var preventVpnOverride      by remember { mutableStateOf(prefs.isPreventVpnOverride) }
@@ -207,6 +214,30 @@ fun SecurityScreen(prefs: PrefsManager) {
             }
         )
 
+        // ── Banking Mode Section (Conditional) ────────────────────────────────
+        if (isPermissionBlockEnabled) {
+            Spacer(Modifier.height(24.dp))
+            SectionLabel("BANKING COMPATIBILITY")
+
+            ActionCard(
+                title = if (isBankingBypassEnabled) "Finish Banking Mode" else "Banking Mode (Temp Bypass)",
+                description = if (isBankingBypassEnabled) 
+                    "Tap to finish and re-enable Accessibility permission." 
+                    else "One-tap turn OFF accessibility to use one banking app.",
+                icon = androidx.compose.material.icons.Icons.Rounded.Security,
+                onClick = { viewModel.onBankingBypassToggleRequested(!isBankingBypassEnabled) }
+            )
+            
+            if (isBankingBypassEnabled) {
+                Text(
+                    "Currently allowing: $bankingBypassPackage\nDigital Monk Accessibility is OFF. All non-banking apps are blocked.",
+                    fontSize = 11.sp,
+                    color = Color(0xFFEF4444), // Red to indicate vulnerability/special state
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                )
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
 
         SectionLabel("PRIVATE DNS PROTECTION")
@@ -256,6 +287,15 @@ fun SecurityScreen(prefs: PrefsManager) {
     val showAppListDialog by viewModel.showAppListDialog.collectAsState()
     if (showAppListDialog) {
         AppUninstallProtectionDialog(viewModel, prefs)
+    }
+
+    if (showBankingAppPicker) {
+        BankingAppPickerDialog(
+            apps = bankingApps,
+            isLoading = isLoadingApps,
+            onAppSelected = { viewModel.confirmBankingBypass(it) },
+            onDismiss = { viewModel.dismissBankingAppPicker() }
+        )
     }
 
     if (showDnsLockDialog) {
@@ -477,6 +517,69 @@ fun SecurityScreen(prefs: PrefsManager) {
 }
 
 
+
+@Composable
+private fun BankingAppPickerDialog(
+    apps: List<SecurityViewModel.AppInfo>,
+    isLoading: Boolean,
+    onAppSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF0F172A),
+        title = { Text("Select Banking App", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    "Only one app can be allowed for temporary bypass. Social media apps are hidden for security.",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = Color(0xFF3B82F6)
+                        )
+                    } else {
+                        androidx.compose.foundation.lazy.LazyColumn {
+                            items(apps.size) { index ->
+                                val app = apps[index]
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onAppSelected(app.packageName) }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    androidx.compose.foundation.Image(
+                                        painter = rememberAppIconPainter(app.icon),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column {
+                                        Text(app.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text(app.packageName, fontSize = 11.sp, color = Color(0xFF64748B))
+                                    }
+                                }
+                                if (index < apps.size - 1) {
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.White) }
+        }
+    )
+}
 
 @Composable
 private fun AppUninstallProtectionDialog(viewModel: SecurityViewModel, prefs: PrefsManager) {

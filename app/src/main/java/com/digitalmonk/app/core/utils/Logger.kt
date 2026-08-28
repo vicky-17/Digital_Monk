@@ -1,7 +1,6 @@
-package com.digitalmonk.app.core.utils;
+package com.digitalmonk.app.core.utils
 
-import android.util.Log;
-import androidx.annotation.Nullable;
+import android.util.Log
 
 /**
  * Why we made this file:
@@ -9,58 +8,56 @@ import androidx.annotation.Nullable;
  * throughout your codebase. If you do, and you later want to hide logs
  * in the release version or send errors to a service like Firebase
  * Crashlytics, you would have to change hundreds of files.
- *
+ * 
  * This "Wrapper" class centralizes all logging. By calling Logger.d()
  * instead of Log.d(), we can change how the entire app handles data
  * just by editing this one file.
- *
+ * 
  * What the file name defines:
  * "Logger" is a standard utility name for a class that handles
  * system output and diagnostic information.
  */
-public class Logger {
-
-    private static final String TAG = Constants.LOG_TAG;
+object Logger {
+    private val TAG = Constants.LOG_TAG
 
     // Static methods allow us to call Logger.d() without instantiating the class
-
-    public static void d(String msg) {
-        Log.d(TAG, msg);
+    fun d(msg: String) {
+        Log.d(TAG, msg)
     }
 
-    public static void d(String tag, String msg) {
-        Log.d(tag, msg);
+    fun d(tag: String?, msg: String) {
+        Log.d(tag, msg)
     }
 
-    public static void i(String msg) {
-        Log.i(TAG, msg);
+    fun i(msg: String) {
+        Log.i(TAG, msg)
     }
 
-    public static void i(String tag, String msg) {
-        Log.i(tag, msg);
+    fun i(tag: String?, msg: String) {
+        Log.i(tag, msg)
     }
 
-    public static void w(String msg) {
-        Log.w(TAG, msg);
+    fun w(msg: String) {
+        Log.w(TAG, msg)
     }
 
-    public static void w(String tag, String msg) {
-        Log.w(tag, msg);
+    fun w(tag: String?, msg: String) {
+        Log.w(tag, msg)
     }
 
-    public static void e(String msg) {
-        Log.e(TAG, msg);
+    fun e(msg: String) {
+        Log.e(TAG, msg)
     }
 
-    public static void e(String tag, String msg) {
-        Log.e(tag, msg);
+    fun e(tag: String?, msg: String) {
+        Log.e(tag, msg)
     }
 
-    public static void e(String tag, String msg, @Nullable Throwable throwable) {
+    fun e(tag: String?, msg: String, throwable: Throwable?) {
         if (throwable != null) {
-            Log.e(tag, msg, throwable);
+            Log.e(tag, msg, throwable)
         } else {
-            Log.e(tag, msg);
+            Log.e(tag, msg)
         }
     }
 }

@@ -1,14 +1,13 @@
-package com.digitalmonk.app.receiver;
+package com.digitalmonk.app.receiver
 
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.os.Build;
-import android.util.Log;
-
-import com.digitalmonk.app.data.local.prefs.PrefsManager;
-import com.digitalmonk.app.service.vpn.DnsVpnService;
-import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartbeatMonitorWorker;
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.util.Log
+import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.service.vpn.DnsVpnService
+import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartbeatMonitorWorker
 
 /**
  * Why we made this file:
@@ -18,50 +17,50 @@ import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartbeatMonitorWorker;
  * turn off and stay off. This BroadcastReceiver listens specifically for the
  * "MY_PACKAGE_REPLACED" system event and immediately turns the VPN and watchdogs
  * back on so the child remains protected after an update.
- *
+ * 
  * What the file name defines:
  * "AppUpdate" defines the event it listens for.
  * "Receiver" identifies it as a BroadcastReceiver component in the Android framework.
  */
-public class AppUpdateReceiver extends BroadcastReceiver {
-
-    private static final String TAG = "AppUpdateReceiver";
-
-    @Override
-    public void onReceive(Context context, Intent intent) {
+class AppUpdateReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
         // Safe check for null intent and exact action match in Java
-        if (intent == null || !Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
-            return;
+        if (intent == null || Intent.ACTION_MY_PACKAGE_REPLACED != intent.getAction()) {
+            return
         }
 
-        Log.i(TAG, "App updated — checking if VPN needs restart");
+        Log.i(TAG, "App updated — checking if VPN needs restart")
 
-        PrefsManager prefs = new PrefsManager(context);
+        val prefs = PrefsManager(context)
 
         if (!prefs.hasPin()) {
-            Log.d(TAG, "App not set up — skipping");
-            return;
+            Log.d(TAG, "App not set up — skipping")
+            return
         }
 
         // Re-schedule WorkManager watchdog regardless (it gets cancelled on update)
         // Note: Make sure isSafeSearchEnabled() exists in your PrefsManager.java
-        if (prefs.isSafeSearchEnabled() && prefs.isKeepVpnAlive()) {
-            VpnHeartbeatMonitorWorker.schedule(context);
+        if (prefs.isSafeSearchEnabled && prefs.isKeepVpnAlive) {
+            VpnHeartbeatMonitorWorker.schedule(context)
         }
 
         // Restart VPN if it was active before the update
-        if (prefs.isSafeSearchEnabled()) {
-            Log.i(TAG, "Restarting DnsVpnService after app update");
+        if (prefs.isSafeSearchEnabled) {
+            Log.i(TAG, "Restarting DnsVpnService after app update")
             try {
-                Intent vpnIntent = new Intent(context, DnsVpnService.class);
+                val vpnIntent = Intent(context, DnsVpnService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(vpnIntent);
+                    context.startForegroundService(vpnIntent)
                 } else {
-                    context.startService(vpnIntent);
+                    context.startService(vpnIntent)
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to restart VPN after update", e);
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to restart VPN after update", e)
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "AppUpdateReceiver"
     }
 }

@@ -24,11 +24,11 @@ class ProtectionStateMonitor(context: Context) {
         this.prefs = PrefsManager(this.context)
     }
 
-    fun check(): MutableSet<ProtectionIssue?> {
+    fun check(currentForegroundPackage: String? = null): MutableSet<ProtectionIssue?> {
         val issues: MutableSet<ProtectionIssue?> =
             EnumSet.noneOf<ProtectionIssue?>(ProtectionIssue::class.java)
 
-        checkPermissions(issues)
+        checkPermissions(issues, currentForegroundPackage)
         checkVpnState(issues)
 
         if (!issues.isEmpty()) {
@@ -57,7 +57,7 @@ class ProtectionStateMonitor(context: Context) {
 
 
 
-    private fun checkPermissions(issues: MutableSet<ProtectionIssue?>) {
+    private fun checkPermissions(issues: MutableSet<ProtectionIssue?>, currentForegroundPackage: String? = null) {
         // If the user disabled strict permission blocking from the security screen, bypass permission checks
         if (!prefs.isPermissionBlockEnabled) {
             return
@@ -65,7 +65,28 @@ class ProtectionStateMonitor(context: Context) {
 
         // 1. Accessibility service
         if (!PermissionHelper.isAccessibilityEnabled(context)) {
-            issues.add(ProtectionIssue.ACCESSIBILITY_DISABLED)
+            // Check if Banking Bypass is active AND we are in the allowed app
+            val isBypassActive = prefs.isBankingBypassEnabled
+            val bypassPkg = prefs.bankingBypassPackage
+            val startTime = prefs.bankingBypassStartTime
+            val now = System.currentTimeMillis()
+            val isTimedOut = (now - startTime) > 10 * 60 * 1000L // 10 minutes
+
+            // During Banking Mode, we allow:
+            // 1. The selected Banking App
+            // 2. Our own app (Digital Monk) - so the user can finish the mode
+            // 3. The Home Screen (Launcher)
+            // 4. "null" (if foreground app detection is transitioning, don't block immediately)
+            val isAllowedApp = currentForegroundPackage == null || 
+                               currentForegroundPackage == bypassPkg || 
+                               currentForegroundPackage == context.packageName || 
+                               currentForegroundPackage == PermissionHelper.getLauncherPackageName(context)
+
+            val shouldSuppress = isBypassActive && !isTimedOut && isAllowedApp
+
+            if (!shouldSuppress) {
+                issues.add(ProtectionIssue.ACCESSIBILITY_DISABLED)
+            }
         }
 
         // 2. Display over other apps

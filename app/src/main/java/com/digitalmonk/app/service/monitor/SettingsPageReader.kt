@@ -1,214 +1,210 @@
-package com.digitalmonk.app.service.monitor;
+package com.digitalmonk.app.service.monitor
 
-import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import android.view.accessibility.AccessibilityNodeInfo;
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.view.accessibility.AccessibilityNodeInfo
+import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.service.accessibility.AllowlistManager
+import com.digitalmonk.app.service.accessibility.GuardianAccessibilityService
+import com.digitalmonk.app.service.accessibility.GuardianAccessibilityService.Companion.currentRootNode
+import com.digitalmonk.app.ui.block.BlockedPageActivity.Companion.settingsBlock
+import java.util.Collections
+import kotlin.concurrent.Volatile
 
-import com.digitalmonk.app.data.local.prefs.PrefsManager;
-import com.digitalmonk.app.service.accessibility.AllowlistManager;
-import com.digitalmonk.app.service.accessibility.GuardianAccessibilityService;
-import com.digitalmonk.app.ui.block.BlockedPageActivity;
+class SettingsPageReader(private val prefs: PrefsManager) {
+    @Volatile
+    private var escapeInProgress = true
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
-public class SettingsPageReader {
-
-    private static final String TAG = "SettingsPageReader";
-    private final PrefsManager prefs;
-    public SettingsPageReader(PrefsManager prefs) {
-        this.prefs = prefs;
-    }
-
-    private static final long ESCAPE_COOLDOWN_MS     = 2_500L;
-    private static final long ACCESSIBILITY_GRACE_MS = 5_000L;
-
-    private static final Set<String> SETTINGS_PACKAGES =
-            SettingsAppMonitor.SETTINGS_PACKAGES;
-
-    private static final Set<String> DANGEROUS_TITLES = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList(
-                    "App info",
-                    "Device admin app",
-                    "Application info"
-            ))
-    );
-
-    // CHANGED: replaced button texts with body texts visible in accessibility tree
-    // MIUI deliberately hides action buttons from accessibility tree as a security measure.
-    // We use body text that is always rendered as TextView instead.
-    private static final Set<String> DANGER_BUTTONS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList(
-                    // Device Admin page — body text confirmed visible in accessibility dump
-                    "This admin app is active",
-                    // App Info page — buttons still visible on stock Android
-                    "Force stop",
-                    "Uninstall",
-                    "Storage & cache",
-                    "Storage and cache"
-            ))
-    );
-
-    private volatile boolean escapeInProgress    = true;
-    private volatile long    lastEscapeAttemptMs = 0L;
+    @Volatile
+    private var lastEscapeAttemptMs = 0L
 
     // ── Public API ────────────────────────────────────────────────────────────
-
-    public boolean readAndRespond(Context context, String settingsPkg) {
-        if (!prefs.isAntiUninstallEnabled()) return false;
-//        Log.d("MONK_TRACE", "readAndRespond() called → pkg=" + settingsPkg
+    fun readAndRespond(context: Context, settingsPkg: String?): Boolean {
+        if (!prefs.isAntiUninstallEnabled) return false
+        //        Log.d("MONK_TRACE", "readAndRespond() called → pkg=" + settingsPkg
 //                + " | escapeInProgress=" + escapeInProgress);
 //
         if (escapeInProgress) {
 //            Log.d("MONK_TRACE", "readAndRespond() → SKIP: escapeInProgress");
-            return false;
+            return false
         }
 
-        long now = System.currentTimeMillis();
+        val now = System.currentTimeMillis()
         if (now - lastEscapeAttemptMs < ESCAPE_COOLDOWN_MS) {
 //            Log.d("MONK_TRACE", "readAndRespond() → SKIP: cooldown active, remaining="
 //                    + (ESCAPE_COOLDOWN_MS - (now - lastEscapeAttemptMs)) + "ms");
-            return false;
+            return false
         }
 
-        AccessibilityNodeInfo root = getAccessibilityRoot();
-//        Log.d("MONK_TRACE", "readAndRespond() → root=" + (root != null ? "AVAILABLE" : "NULL"));
+        val root = this.accessibilityRoot
 
-        if ("com.miui.securitycenter".equals(settingsPkg)) {
+        //        Log.d("MONK_TRACE", "readAndRespond() → root=" + (root != null ? "AVAILABLE" : "NULL"));
+        if ("com.miui.securitycenter" == settingsPkg) {
             if (root != null && isDangerousSettingsPage(root, settingsPkg)) {
 //                Log.w("MONK_TRACE", "readAndRespond() → DANGEROUS (miui path) → launching redirect");
-                lastEscapeAttemptMs = now;
-                launchRedirectActivity(context);
-                return true;
+                lastEscapeAttemptMs = now
+                launchRedirectActivity(context)
+                return true
             }
-//            Log.d("MONK_TRACE", "readAndRespond() → miui path, not dangerous or root null");
-            return false;
+            //            Log.d("MONK_TRACE", "readAndRespond() → miui path, not dangerous or root null");
+            return false
         }
 
         if (isDangerousSettingsPage(root, settingsPkg)) {
 //            Log.w("MONK_TRACE", "readAndRespond() → DANGEROUS → launching redirect");
-            lastEscapeAttemptMs = now;
-            launchRedirectActivity(context);
-            return true;
+            lastEscapeAttemptMs = now
+            launchRedirectActivity(context)
+            return true
         }
 
-//        Log.d("MONK_TRACE", "readAndRespond() → safe page");
-        return false;
+        //        Log.d("MONK_TRACE", "readAndRespond() → safe page");
+        return false
     }
 
-    public void reset() {
-        escapeInProgress = false;
-//        Log.d(TAG, "SettingsPageReader reset");
+    fun reset() {
+        escapeInProgress = false
+        //        Log.d(TAG, "SettingsPageReader reset");
     }
 
     // ── Launch redirect activity ──────────────────────────────────────────────
-
-    private void launchRedirectActivity(Context context) {
-        escapeInProgress = true;
+    private fun launchRedirectActivity(context: Context) {
+        escapeInProgress = true
         try {
-            context.startActivity(BlockedPageActivity.Companion.settingsBlock(context));
-        } catch (Exception e) {
-            escapeInProgress = false;
+            context.startActivity(settingsBlock(context))
+        } catch (e: Exception) {
+            escapeInProgress = false
         }
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            escapeInProgress = false;
-        }, 1500L);
+        Handler(Looper.getMainLooper()).postDelayed(Runnable {
+            escapeInProgress = false
+        }, 1500L)
     }
 
     // ── Detection ─────────────────────────────────────────────────────────────
-
-    private boolean isDangerousSettingsPage(AccessibilityNodeInfo root, String packageName) {
+    private fun isDangerousSettingsPage(
+        root: AccessibilityNodeInfo?,
+        packageName: String?
+    ): Boolean {
 //        Log.d("MONK_TRACE", "isDangerousSettingsPage() → pkg=" + packageName + " | root=" + (root != null ? "ok" : "null"));
 
         if (packageName == null || !SETTINGS_PACKAGES.contains(packageName)) {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE1 FAIL: not a settings package");
-            return false;
+            return false
         }
         if (root == null) {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE2 FAIL: root is null");
-            return false;
+            return false
         }
         // ── ALLOWLIST CHECK ───────────────────────────────────────────────────
-        AllowlistManager allowlist = AllowlistManager.getInstance();
+        val allowlist: AllowlistManager = AllowlistManager.getInstance()
         // Check against all visible text on the page
-        for (String title : DANGEROUS_TITLES) {
+        for (title in DANGEROUS_TITLES) {
             if (hasExactText(root, title) && allowlist.isAnyAllowed(title)) {
-                return false;
+                return false
             }
         }
+
         // Also check raw page title
         // (re-use your existing hasAnyText / hasExactText helpers)
-
         if (!hasAnyText(root, DANGEROUS_TITLES)) {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE3 FAIL: no dangerous title found");
-            return false;
+            return false
         }
         if (!hasExactText(root, "Digital Monk")) {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE4 FAIL: 'Digital Monk' text not found");
-            return false;
+            return false
         }
         // CHANGED: Gate 5 now checks body text instead of buttons
         // MIUI hides action buttons from accessibility tree — confirmed via UI dump
         if (!hasAnyText(root, DANGER_BUTTONS)) {
 //            Log.d("MONK_TRACE", "isDangerousSettingsPage() → GATE5 FAIL: no confirmation text found (buttons hidden by MIUI)");
-            return false;
+            return false
         }
 
-//        Log.w("MONK_TRACE", "isDangerousSettingsPage() → ALL GATES PASSED ✓");
-        return true;
+        //        Log.w("MONK_TRACE", "isDangerousSettingsPage() → ALL GATES PASSED ✓");
+        return true
     }
 
-    private boolean hasAnyText(AccessibilityNodeInfo root, Set<String> candidates) {
-        for (String c : candidates) {
-            if (hasExactText(root, c)) return true;
+    private fun hasAnyText(root: AccessibilityNodeInfo?, candidates: MutableSet<String?>): Boolean {
+        for (c in candidates) {
+            if (hasExactText(root, c)) return true
         }
-        return false;
+        return false
     }
 
-    private boolean hasExactText(AccessibilityNodeInfo root, String text) {
+    private fun hasExactText(root: AccessibilityNodeInfo?, text: String?): Boolean {
         try {
-            if (root == null || text == null) return false;
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(text);
-            return nodes != null && !nodes.isEmpty();
-        } catch (Exception e) {
-            return false;
+            if (root == null || text == null) return false
+            val nodes = root.findAccessibilityNodeInfosByText(text)
+            return nodes != null && !nodes.isEmpty()
+        } catch (e: Exception) {
+            return false
         }
     }
 
-    private AccessibilityNodeInfo getAccessibilityRoot() {
-        long connected = GuardianAccessibilityService.serviceConnectedTimestamp;
-        long lastEvent  = GuardianAccessibilityService.lastEventTimestamp;
-        long now        = System.currentTimeMillis();
+    private val accessibilityRoot: AccessibilityNodeInfo?
+        get() {
+            val connected = GuardianAccessibilityService.serviceConnectedTimestamp
+            val lastEvent = GuardianAccessibilityService.lastEventTimestamp
+            val now = System.currentTimeMillis()
 
-//        Log.d("MONK_TRACE", "getAccessibilityRoot() → connected=" + connected
+            //        Log.d("MONK_TRACE", "getAccessibilityRoot() → connected=" + connected
 //                + " | timeSinceConnected=" + (connected > 0 ? (now - connected) : "N/A")
 //                + " | lastEvent=" + lastEvent
 //                + " | timeSinceLastEvent=" + (lastEvent > 0 ? (now - lastEvent) : "N/A")
 //                + " | graceMs=" + ACCESSIBILITY_GRACE_MS);
-
-        if (connected == 0) {
+            if (connected == 0L) {
 //            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: service never connected");
-            return null;
-        }
-        if (now - connected < ACCESSIBILITY_GRACE_MS) {
+                return null
+            }
+            if (now - connected < ACCESSIBILITY_GRACE_MS) {
 //            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: still in grace period");
-            return null;
-        }
-        if (lastEvent == 0) {
+                return null
+            }
+            if (lastEvent == 0L) {
 //            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: no events received yet");
-            return null;
-        }
-        if (now - lastEvent > 15_000L) {
+                return null
+            }
+            if (now - lastEvent > 15000L) {
 //            Log.d("MONK_TRACE", "getAccessibilityRoot() → NULL: last event too old (" + (now - lastEvent) + "ms ago)");
-            return null;
+                return null
+            }
+
+            val root = currentRootNode
+            //        Log.d("MONK_TRACE", "getAccessibilityRoot() → " + (root != null ? "GOT ROOT" : "getCurrentRootNode() returned null"));
+            return root
         }
 
-        AccessibilityNodeInfo root = GuardianAccessibilityService.getCurrentRootNode();
-//        Log.d("MONK_TRACE", "getAccessibilityRoot() → " + (root != null ? "GOT ROOT" : "getCurrentRootNode() returned null"));
-        return root;
+    companion object {
+        private const val TAG = "SettingsPageReader"
+        private const val ESCAPE_COOLDOWN_MS = 2500L
+        private const val ACCESSIBILITY_GRACE_MS = 5000L
+
+        private val SETTINGS_PACKAGES = SettingsAppMonitor.SETTINGS_PACKAGES
+
+        private val DANGEROUS_TITLES: MutableSet<String?> = Collections.unmodifiableSet<String?>(
+            HashSet<String?>(
+                mutableListOf<String?>(
+                    "App info",
+                    "Device admin app",
+                    "Application info"
+                )
+            )
+        )
+
+        // CHANGED: replaced button texts with body texts visible in accessibility tree
+        // MIUI deliberately hides action buttons from accessibility tree as a security measure.
+        // We use body text that is always rendered as TextView instead.
+        private val DANGER_BUTTONS: MutableSet<String?> = Collections.unmodifiableSet<String?>(
+            HashSet<String?>(
+                mutableListOf<String?>( // Device Admin page — body text confirmed visible in accessibility dump
+                    "This admin app is active",  // App Info page — buttons still visible on stock Android
+                    "Force stop",
+                    "Uninstall",
+                    "Storage & cache",
+                    "Storage and cache"
+                )
+            )
+        )
     }
 }
