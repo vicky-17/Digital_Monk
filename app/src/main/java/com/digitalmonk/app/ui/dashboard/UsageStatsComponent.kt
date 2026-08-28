@@ -105,9 +105,12 @@ fun UsageStatsSection(
 
 @Composable
 private fun UsageHero(stats: List<AppUsageInfo>, comparison: Int) {
-    val totalTimeMs = stats.sumOf { it.usageTimeMs }
+    // Exclude Launcher time from the total to match Digital Wellbeing's "Screen Time"
+    val activeStats = stats.filter { it.category != "Launcher" }
+    val totalTimeMs = activeStats.sumOf { it.usageTimeMs }
+    
     // Take 3 specific apps, "Others" will be the 4th item
-    val topApps = stats.take(3)
+    val topApps = activeStats.take(3)
     val remainingMs = totalTimeMs - topApps.sumOf { it.usageTimeMs }
 
     val colors = listOf(AccentBlue, AccentViolet, AccentPink, AccentOrange, AccentYellow, AccentTeal)
@@ -173,7 +176,7 @@ private fun UsageHero(stats: List<AppUsageInfo>, comparison: Int) {
         // ── Right Side: Compact Legend ──────────────────────────────────
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             topApps.forEachIndexed { index, app ->
                 LegendItem(app.appName, formatDurationShort(app.usageTimeMs), colors[index % colors.size], app.icon)
@@ -211,19 +214,21 @@ private fun LegendItem(name: String, duration: String, color: Color, icon: Any?)
             } ?: Box(Modifier.size(20.dp).background(Color.White.copy(0.08f), CircleShape))
         }
 
-        Column {
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
                 name,
                 color = TextPrimary,
-                fontSize = 11.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1
+                maxLines = 1,
+                lineHeight = 16.sp
             )
             Text(
                 text = duration,
                 color = TextSecond,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 14.sp
             )
         }
     }
