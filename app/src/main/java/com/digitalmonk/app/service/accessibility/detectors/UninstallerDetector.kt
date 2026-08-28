@@ -87,15 +87,15 @@ object UninstallerDetector {
                 "android:id/title",
                 "com.miui.securitycenter:id/title"
             )) {
-                val nodes =
-                    root.findAccessibilityNodeInfosByViewId(titleId!!)
+                val nodes = root.findAccessibilityNodeInfosByViewId(titleId!!)
                 if (nodes != null && !nodes.isEmpty()) {
-                    val text = nodes.get(0)!!.getText()
+                    val text = nodes[0].text
+                    nodes.forEach { it.recycle() } // CRITICAL
                     if (text != null) return text.toString()
                 }
             }
             // Fallback: dump all text from the page
-            if (root.getText() != null) return root.getText().toString()
+            if (root.text != null) return root.text.toString()
         } catch (ignored: Exception) {
         }
         return ""
@@ -113,9 +113,12 @@ object UninstallerDetector {
         try {
             if (root == null || text == null) return false
             val nodes = root.findAccessibilityNodeInfosByText(text)
-            return nodes != null && !nodes.isEmpty()
+            if (nodes != null && !nodes.isEmpty()) {
+                nodes.forEach { it.recycle() } // CRITICAL
+                return true
+            }
         } catch (e: Exception) {
-            return false
         }
+        return false
     }
 }

@@ -39,27 +39,26 @@ class SettingsPageReader(private val prefs: PrefsManager) {
 
         val root = this.accessibilityRoot
 
-        //        Log.d("MONK_TRACE", "readAndRespond() → root=" + (root != null ? "AVAILABLE" : "NULL"));
-        if ("com.miui.securitycenter" == settingsPkg) {
-            if (root != null && isDangerousSettingsPage(root, settingsPkg)) {
-//                Log.w("MONK_TRACE", "readAndRespond() → DANGEROUS (miui path) → launching redirect");
+        try {
+            if ("com.miui.securitycenter" == settingsPkg) {
+                if (root != null && isDangerousSettingsPage(root, settingsPkg)) {
+                    lastEscapeAttemptMs = now
+                    launchRedirectActivity(context)
+                    return true
+                }
+                return false
+            }
+
+            if (isDangerousSettingsPage(root, settingsPkg)) {
                 lastEscapeAttemptMs = now
                 launchRedirectActivity(context)
                 return true
             }
-            //            Log.d("MONK_TRACE", "readAndRespond() → miui path, not dangerous or root null");
+
             return false
+        } finally {
+            root?.recycle() // CRITICAL: Recycle to avoid hangs
         }
-
-        if (isDangerousSettingsPage(root, settingsPkg)) {
-//            Log.w("MONK_TRACE", "readAndRespond() → DANGEROUS → launching redirect");
-            lastEscapeAttemptMs = now
-            launchRedirectActivity(context)
-            return true
-        }
-
-        //        Log.d("MONK_TRACE", "readAndRespond() → safe page");
-        return false
     }
 
     fun reset() {

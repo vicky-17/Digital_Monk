@@ -1,6 +1,5 @@
 package com.digitalmonk.app.core.utils
 
-import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -25,153 +24,115 @@ class UsageStatsHelper(private val context: Context) {
         )
         val dateKey = TimeUtils.dayKey(localDate)
         
-        val dbStats = runBlocking { appUsageDao.getForDate(dateKey) }
-        if (dbStats.isNotEmpty()) {
-            return dbStats.mapNotNull { it.toAppUsageInfo() }.sortedByDescending { it.usageTimeMs }
-        }
-
         val calendar = date.clone() as Calendar
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
-        val startTime = calendar.timeInMillis
+        // Ensure we are inside the target day (UsageStatsManager buckets are strict)
+        val startTime = calendar.timeInMillis + 1
         
         calendar.add(Calendar.DAY_OF_YEAR, 1)
-        val endTime = calendar.timeInMillis
+        // Stay within the target day
+        val endTime = calendar.timeInMillis - 1
         
-        return getUsageStatsInRange(startTime, endTime)
+        val systemStats = getUsageStatsInRange(startTime, endTime)
+        val dbStats = runBlocking { appUsageDao.getForDate(dateKey) }.mapNotNull { it.toAppUsageInfo() }
+        
+        return mergeUsageStats(systemStats, dbStats)
     }
 
     fun getTodayUsageStats(): List<AppUsageInfo> {
         val dateKey = TimeUtils.todayKey()
-        val dbStats = runBlocking { appUsageDao.getForDate(dateKey) }
-        if (dbStats.isNotEmpty()) {
-            return dbStats.mapNotNull { it.toAppUsageInfo() }.sortedByDescending { it.usageTimeMs }
-        }
-
+        
         val calendar = Calendar.getInstance()
         val endTime = calendar.timeInMillis
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
         calendar.set(Calendar.MILLISECOND, 0)
-        val startTime = calendar.timeInMillis
+        // Ensure we start exactly at the beginning of today
+        val startTime = calendar.timeInMillis + 1
         
-        return getUsageStatsInRange(startTime, endTime)
+        val systemStats = getUsageStatsInRange(startTime, endTime)
+        val dbStats = runBlocking { appUsageDao.getForDate(dateKey) }.mapNotNull { it.toAppUsageInfo() }
+        
+        return mergeUsageStats(systemStats, dbStats)
+    }
+
+    private fun mergeUsageStats(system: List<AppUsageInfo>, db: List<AppUsageInfo>): List<AppUsageInfo> {
+        val mergedMap = mutableMapOf<String, AppUsageInfo>()
+        
+        // Add all from system
+        system.forEach { mergedMap[it.packageName] = it }
+        
+        // Merge from DB (Accessibility)
+        db.forEach { dbInfo ->
+            val existing = mergedMap[dbInfo.packageName]
+            if (existing != null) {
+                // Combine: Take the maximum to ensure we don't under-report
+                // Sometimes Accessibility is more accurate for the last session,
+                // while UsageStats is better for overall day.
+                mergedMap[dbInfo.packageName] = existing.copy(
+                    usageTimeMs = maxOf(existing.usageTimeMs, dbInfo.usageTimeMs),
+                    launchCount = maxOf(existing.launchCount, dbInfo.launchCount)
+                )
+            } else {
+                mergedMap[dbInfo.packageName] = dbInfo
+            }
+        }
+        
+        return mergedMap.values.sortedByDescending { it.usageTimeMs }
     }
 
     private fun getUsageStatsInRange(startTime: Long, endTime: Long): List<AppUsageInfo> {
-        val events = usageStatsManager.queryEvents(startTime, endTime)
-        
-        val moveToForegroundMap = mutableMapOf<String, Long>()
-        val usageMap = mutableMapOf<String, Long>()
-        val launchMap = mutableMapOf<String, Int>()
+        // Use queryAndAggregateUsageStats for "today so far" as it's more robust than INTERVAL_DAILY
+        // which can sometimes return the previous day's bucket if the current one isn't ready.
+        val statsMap = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+        val aggregatedMap = mutableMapOf<String, AppUsageInfo>()
 
-        // Get default launcher to exclude it from usage
+        // Get default launcher to categorize it
         val launcherIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
             addCategory(android.content.Intent.CATEGORY_HOME)
         }
         val resolveInfo = packageManager.resolveActivity(launcherIntent, PackageManager.MATCH_DEFAULT_ONLY)
         val launcherPackage = resolveInfo?.activityInfo?.packageName
 
-        val event = UsageEvents.Event()
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            val pkg = event.packageName ?: continue
+        statsMap.forEach { (pkg, stat) ->
+            val time = stat.totalTimeInForeground
             
-            // Skip launcher and system UI components
-            if (pkg == launcherPackage || pkg == "com.android.systemui" || pkg == "android" || pkg == context.packageName) continue
+            if (time <= 0) return@forEach
+            // Only skip very specific system internals that Regain also skips
+            if (pkg == "com.android.systemui" || pkg == "android") return@forEach
 
-            when (event.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED, 1 -> {
-                    moveToForegroundMap[pkg] = event.timeStamp
-                    launchMap[pkg] = (launchMap[pkg] ?: 0) + 1
-                }
-                UsageEvents.Event.ACTIVITY_PAUSED, 2,
-                UsageEvents.Event.ACTIVITY_STOPPED, 23 -> {
-                    val start = moveToForegroundMap[pkg]
-                    if (start != null) {
-                        val duration = event.timeStamp - start
-                        if (duration > 0) { 
-                            usageMap[pkg] = (usageMap[pkg] ?: 0L) + duration
-                        }
-                        moveToForegroundMap.remove(pkg)
-                    }
-                }
-            }
-        }
-
-        // Handle apps currently in foreground (unclosed sessions)
-        val now = System.currentTimeMillis()
-        val actualEndTime = if (endTime > now) now else endTime
-        moveToForegroundMap.forEach { (pkg, start) ->
-            if (actualEndTime > start) {
-                usageMap[pkg] = (usageMap[pkg] ?: 0L) + (actualEndTime - start)
-            }
-        }
-
-        val finalStats = usageMap.mapNotNull { (pkg, time) ->
-            if (time <= 0 && (launchMap[pkg] ?: 0) <= 0) return@mapNotNull null
-            
             try {
                 val appInfo = packageManager.getApplicationInfo(pkg, 0)
-                if (packageManager.getLaunchIntentForPackage(pkg) == null) return@mapNotNull null
-                
-                val category = when (appInfo.category) {
-                    android.content.pm.ApplicationInfo.CATEGORY_GAME -> "Game"
-                    android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> "Social"
-                    android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Productivity"
-                    android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> "Video"
-                    android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> "Audio"
+                // Filter out non-launchable apps unless it's our own or a known important one
+                if (packageManager.getLaunchIntentForPackage(pkg) == null && pkg != context.packageName) return@forEach
+
+                val category = when {
+                    pkg == launcherPackage -> "Launcher"
+                    appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_GAME -> "Game"
+                    appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> "Social"
+                    appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Productivity"
+                    appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> "Video"
+                    appInfo.category == android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> "Audio"
                     else -> "App"
                 }
 
-                AppUsageInfo(
+                aggregatedMap[pkg] = AppUsageInfo(
                     packageName = pkg,
                     appName = packageManager.getApplicationLabel(appInfo).toString(),
                     icon = packageManager.getApplicationIcon(appInfo),
                     usageTimeMs = time,
-                    launchCount = launchMap[pkg] ?: 0,
+                    // Note: UsageStats.appLaunchCount is only available on API 28+
+                    launchCount = 0,
                     category = category
                 )
-            } catch (_: PackageManager.NameNotFoundException) {
-                null
-            }
-        }.sortedByDescending { it.usageTimeMs }
-
-        // Fallback to queryUsageStats if queryEvents returned nothing
-        if (finalStats.isEmpty()) {
-            val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-            val aggregatedMap = mutableMapOf<String, Long>()
-            stats.forEach { 
-                if (it.totalTimeInForeground > 0) {
-                    aggregatedMap[it.packageName] = (aggregatedMap[it.packageName] ?: 0L) + it.totalTimeInForeground
-                }
-            }
-            
-            return aggregatedMap.mapNotNull { (pkg, time) ->
-                if (pkg == launcherPackage || pkg == "com.android.systemui" || pkg == "android" || pkg == context.packageName) return@mapNotNull null
-                
-                try {
-                    val appInfo = packageManager.getApplicationInfo(pkg, 0)
-                    if (packageManager.getLaunchIntentForPackage(pkg) == null) return@mapNotNull null
-                    
-                    AppUsageInfo(
-                        packageName = pkg,
-                        appName = packageManager.getApplicationLabel(appInfo).toString(),
-                        icon = packageManager.getApplicationIcon(appInfo),
-                        usageTimeMs = time,
-                        launchCount = 0,
-                        category = "App"
-                    )
-                } catch (_: Exception) {
-                    null
-                }
-            }.sortedByDescending { it.usageTimeMs }
+            } catch (_: Exception) {}
         }
 
-        return finalStats
+        return aggregatedMap.values.sortedByDescending { it.usageTimeMs }
     }
     
     fun hasUsageStatsPermission(): Boolean {

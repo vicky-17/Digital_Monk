@@ -55,6 +55,12 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
         if (usageStatsHelper.hasUsageStatsPermission()) {
             _isPermissionGranted.value = true
             loadTodayOnly()
+
+            // Update selected index if we are on the current week so the chart follows the day rollover
+            if (_weekOffset.value == 0) {
+                _selectedDayIndex.value = calculateTodayIndex()
+            }
+
             loadWeekData()
         } else {
             _isPermissionGranted.value = false
@@ -155,12 +161,10 @@ class UsageViewModel(application: Application) : AndroidViewModel(application) {
     private fun startAutoRefresh() {
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
-                delay(300000) // Refresh every 5 minutes instead of 30s
-                if (usageStatsHelper.hasUsageStatsPermission() && _weekOffset.value == 0) {
-                    loadTodayOnly()
-                    if (_selectedDayIndex.value == calculateTodayIndex()) {
-                        loadSelectedDayStats()
-                    }
+                delay(300000) // Refresh every 5 minutes
+                if (usageStatsHelper.hasUsageStatsPermission()) {
+                    // refreshStats() updates todayStats, weekly labels, and handles day rollover
+                    refreshStats()
                 }
             }
         }

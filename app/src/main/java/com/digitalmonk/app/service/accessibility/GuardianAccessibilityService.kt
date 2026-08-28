@@ -5,14 +5,26 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.digitalmonk.app.core.utils.UiDumper.dumpAll
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.DataStoreManager
+import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.service.accessibility.handlers.AppBlockHandler
 import com.digitalmonk.app.service.accessibility.handlers.ShortsBlockHandler
 import com.digitalmonk.app.service.monitor.AppUsageTracker
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlin.concurrent.Volatile
 
 class GuardianAccessibilityService : AccessibilityService() {
-    private var prefs: PrefsManager? = null
+    private var dataStoreManager: DataStoreManager? = null
+    private var settings = Settings()
+    private val settingsFlow = MutableStateFlow(Settings())
+    
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val eventChannel = Channel<AccessibilityEvent>(Channel.CONFLATED)
+    
     private var shortsBlockHandler: ShortsBlockHandler? = null
     private var appBlockHandler: AppBlockHandler? = null
     private var appUsageTracker: AppUsageTracker? = null
@@ -20,12 +32,30 @@ class GuardianAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        prefs = PrefsManager(this)
+        dataStoreManager = DataStoreManager(this)
+        
+        serviceScope.launch {
+            dataStoreManager?.settings?.collect { newSettings ->
+                settings = newSettings
+                settingsFlow.value = newSettings
+            }
+        }
+
+        serviceScope.launch(Dispatchers.Default) {
+            eventChannel.receiveAsFlow().collect { event ->
+                try {
+                    processEvent(event)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing event", e)
+                } finally {
+                    event.recycle()
+                }
+            }
+        }
+
         shortsBlockHandler = ShortsBlockHandler(
-            prefs!!,
             ShortsBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
         appBlockHandler = AppBlockHandler(
-            prefs!!,
             AppBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
         appUsageTracker = AppUsageTracker()
         appUsageTracker?.setup(this)
@@ -41,6 +71,7 @@ class GuardianAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel()
         appUsageTracker?.onDestroy()
         appUsageTracker = null
         instance = null
@@ -51,18 +82,35 @@ class GuardianAccessibilityService : AccessibilityService() {
         lastEventTimestamp = System.currentTimeMillis()
         if (event == null) return
         appUsageTracker?.onEvent(event)
-        val eventType = event.getEventType()
-        val pkgSeq = event.getPackageName()
+        
+        val eventType = event.eventType
+        val pkgSeq = event.packageName
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSeq != null) {
             lastForegroundPackage = pkgSeq.toString()
         }
+
+        // Conflate events: only process the latest one to avoid interaction timeouts
+        val eventCopy = AccessibilityEvent.obtain(event)
+        if (!eventChannel.trySend(eventCopy).isSuccess) {
+            eventCopy.recycle()
+        }
+    }
+
+    private fun processEvent(event: AccessibilityEvent) {
+        val eventType = event.eventType
+        val pkgSeq = event.packageName
+        
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val root = getRootInActiveWindow()
+            val root = rootInActiveWindow // Slow call
             if (root != null) {
-//                logViewHierarchy(root, 0);
-                if (findAndPerformBack(root)) return
+                try {
+                    if (findAndPerformBack(root)) return
+                } finally {
+                    root.recycle() // CRITICAL: Recycle to avoid leaks and hangs
+                }
             }
         }
+
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             && eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) {
@@ -71,21 +119,26 @@ class GuardianAccessibilityService : AccessibilityService() {
 
         if (pkgSeq == null) return
         val pkg = pkgSeq.toString()
-        if (pkg == getApplicationContext().getPackageName()) return
+        if (pkg == packageName) return
 
-        val root = getRootInActiveWindow()
+        val root = rootInActiveWindow
+        if (root != null) {
+            try {
+                if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    dumpAll(root, pkg)
+                }
 
-        if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            dumpAll(root, pkg)
+                shortsBlockHandler?.handle(root, pkg, settings)
+                appBlockHandler?.handle(root, pkg, eventType, settings)
+            } finally {
+                root.recycle() // CRITICAL: Recycle to avoid leaks and hangs
+            }
         }
-
-        shortsBlockHandler!!.handle(root, pkg)
-        appBlockHandler!!.handle(root, pkg, eventType, getApplicationContext())
     }
 
     private fun findAndPerformBack(root: AccessibilityNodeInfo?): Boolean {
         if (root == null) return false
-        if (!prefs!!.isAntiUninstallEnabled) return false
+        if (!settings.isAntiUninstallEnabled) return false
 
         if (!hasText(root, "Digital Monk")) return false
 

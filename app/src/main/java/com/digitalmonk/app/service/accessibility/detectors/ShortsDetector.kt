@@ -53,9 +53,12 @@ object ShortsDetector {
     private fun hasViewId(root: AccessibilityNodeInfo, viewId: String): Boolean {
         try {
             val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
-            return nodes != null && !nodes.isEmpty()
+            if (nodes != null && !nodes.isEmpty()) {
+                nodes.forEach { it.recycle() }
+                return true
+            }
         } catch (e: Exception) {
-            return false
         }
+        return false
     }
 }

@@ -3,6 +3,7 @@ package com.digitalmonk.app.ui.dashboard
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,7 +42,6 @@ private val AccentPink     = Color(0xFFEC4899)
 private val AccentOrange   = Color(0xFFF59E0B)
 private val AccentYellow   = Color(0xFFFACC15)
 private val AccentTeal     = Color(0xFF14B8A6)
-private val AccentGray     = Color(0xFF8B93A7)
 private val AccentGreen    = Color(0xFF34D399)
 private val TextPrimary    = Color(0xFFf5f6fb)
 private val TextSecond     = Color(0xFFf5f6fb).copy(alpha = 0.62f)
@@ -79,247 +79,222 @@ fun UsageStatsSection(
     onGrantPermission: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (!isPermissionGranted) {
-            PermissionRequestCard(onGrant = onGrantPermission)
-        } else {
-            UsageHero(usageStats, comparisonPercent)
-            
-            Spacer(Modifier.height(24.dp))
-            
-            InsightCard(comparisonPercent)
-            
-            Spacer(Modifier.height(14.dp))
-            
-            MostUsedAppsSection(usageStats, onOpenAllStats)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = GlassBg),
+            shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(1.dp, GlassBorder)
+        ){
+            if (!isPermissionGranted) {
+                PermissionRequestCard(onGrant = onGrantPermission)
+            } else {
+                UsageHero(usageStats, comparisonPercent)
+
+                Spacer(Modifier.height(24.dp))
+
+                InsightCard(comparisonPercent)
+
+                Spacer(Modifier.height(14.dp))
+
+                MostUsedAppsSection(usageStats, onOpenAllStats)
+            }
         }
+
     }
 }
 
 @Composable
 private fun UsageHero(stats: List<AppUsageInfo>, comparison: Int) {
     val totalTimeMs = stats.sumOf { it.usageTimeMs }
-    
-    Box(
+    // Take 3 specific apps, "Others" will be the 4th item
+    val topApps = stats.take(3)
+    val remainingMs = totalTimeMs - topApps.sumOf { it.usageTimeMs }
+
+    val colors = listOf(AccentBlue, AccentViolet, AccentPink, AccentOrange, AccentYellow, AccentTeal)
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center
+            .padding(start = 12.dp, end = 8.dp, top = 14.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        UsageRingLayout(stats)
-        
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        // ── Left Side: Precision Dual Ring Layout ────────────────────────
+        Box(
             modifier = Modifier
-                .size(160.dp)
-                .aspectRatio(1f)
-                .clip(CircleShape)
-                .background(Color(0xFF04040c))
-                .border(1.dp, Color.White.copy(alpha = 0.14f), CircleShape)
-                .padding(8.dp),
-            verticalArrangement = Arrangement.Center
+                .weight(1.35f)
+                .aspectRatio(1f),
+            contentAlignment = Alignment.Center
         ) {
-            Text("Total screen time", color = TextSecond, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            Text(
-                text = formatDuration(totalTimeMs),
-                color = TextPrimary,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold
-            )
-            val todayStr = remember { 
-                java.text.SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date()) 
-            }
-            Text("Today, $todayStr", color = TextSecond, fontSize = 10.sp)
-            
-            Spacer(Modifier.height(6.dp))
-            
-            val isLess = comparison <= 0
-            Text(
-                text = "${if (isLess) "↓" else "↑"} ${kotlin.math.abs(comparison)}% vs yesterday",
-                color = if (isLess) AccentGreen else Color(0xFFF87171),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
+            UsageRingLayout(topApps, totalTimeMs.toFloat().coerceAtLeast(1f), colors)
 
-@Composable
-private fun UsageRingLayout(stats: List<AppUsageInfo>) {
-    val totalMs = stats.sumOf { it.usageTimeMs }.toFloat().coerceAtLeast(1f)
-    val topApps = stats.take(6)
-    val colors = listOf(AccentGray, AccentBlue, AccentViolet, AccentPink, AccentOrange, AccentYellow, AccentTeal)
-
-    // ── Unified Angle Mapping (Top, Bottom, and 4 Corners) ──────────────
-    val appAngles = remember(topApps, totalMs) {
-        var currentAngle = -90f
-        val actualMids = topApps.map { app ->
-            val sweep = (app.usageTimeMs.toFloat() / totalMs) * 360f
-            val mid = currentAngle + (sweep / 2f)
-            currentAngle += sweep
-            mid
-        }
-        
-        // Define 6 safe slots: Top (-90), Top-Right (-40), Bottom-Right (40), Bottom (90), Bottom-Left (140), Top-Left (220)
-        // This specifically avoids 0 (Right) and 180 (Left) to prevent screen edge cutting
-        val targetSlots = listOf(-90f, -40f, 40f, 90f, 140f, 220f)
-        
-        actualMids.mapIndexed { index, actualMid ->
-            actualMid to targetSlots[index % targetSlots.size]
-        }
-    }
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-    ) {
-        val widthPx = constraints.maxWidth.toFloat()
-        val centerX = widthPx / 2f
-        val centerY = widthPx / 2f
-        
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val ringRadius = (size.minDimension / 2f) * 0.55f
-            val strokeWidth = 20.dp.toPx()
-            val glowWidth = 28.dp.toPx()
-
-            // Background track
-            drawCircle(
-                color = Color.White.copy(alpha = 0.06f),
-                radius = ringRadius,
-                center = Offset(centerX, centerY),
-                style = Stroke(width = strokeWidth)
-            )
-
-            var startAngle = -90f
-            topApps.forEachIndexed { index, app ->
-                val sweepAngle = (app.usageTimeMs.toFloat() / totalMs) * 360f
-                val color = colors[index % colors.size]
-                val (actualMidAngle, targetAngle) = appAngles[index]
-
-                // Segment Glow
-                drawArc(
-                    color = color.copy(alpha = 0.3f),
-                    startAngle = startAngle,
-                    sweepAngle = sweepAngle * 0.98f,
-                    useCenter = false,
-                    topLeft = Offset(centerX - ringRadius, centerY - ringRadius),
-                    size = Size(ringRadius * 2, ringRadius * 2),
-                    style = Stroke(width = glowWidth, cap = StrokeCap.Round)
-                )
-                
-                // Main Segment
-                drawArc(
-                    color = color,
-                    startAngle = startAngle,
-                    sweepAngle = sweepAngle * 0.98f,
-                    useCenter = false,
-                    topLeft = Offset(centerX - ringRadius, centerY - ringRadius),
-                    size = Size(ringRadius * 2, ringRadius * 2),
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                )
-
-                // ── pointer lines connecting actual segment to unified chip ──
-                val actualRad = Math.toRadians(actualMidAngle.toDouble())
-                val targetRad = Math.toRadians(targetAngle.toDouble())
-                
-                // Start point on ring
-                val p1Distance = ringRadius + strokeWidth/2 + 2.dp.toPx()
-                val p1x = centerX + p1Distance * cos(actualRad).toFloat()
-                val p1y = centerY + p1Distance * sin(actualRad).toFloat()
-                
-                // End point near the chip
-                val p3Distance = (size.minDimension / 2f) * 0.81f
-                val p3x = centerX + p3Distance * cos(targetRad).toFloat()
-                val p3y = centerY + p3Distance * sin(targetRad).toFloat()
-
-                val path = Path().apply {
-                    moveTo(p1x, p1y)
-                    // Quadratic curve for a smoother connection
-                    val controlDist = (p1Distance + p3Distance) / 2f
-                    val controlX = centerX + controlDist * cos(actualRad).toFloat()
-                    val controlY = centerY + controlDist * sin(actualRad).toFloat()
-                    quadraticTo(controlX, controlY, p3x, p3y)
-                }
-                
-                drawPath(path = path, color = color.copy(alpha = 0.35f), style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round))
-                drawCircle(color = color.copy(alpha = 0.8f), radius = 3.dp.toPx(), center = Offset(p1x, p1y))
-                drawCircle(color = color.copy(alpha = 0.8f), radius = 2.dp.toPx(), center = Offset(p3x, p3y))
-
-                startAngle += sweepAngle
-            }
-        }
-
-        // ── Floating App Chips (Positioned at Unified Angles) ────────────────
-        topApps.forEachIndexed { index, app ->
-            val (_, targetAngle) = appAngles[index]
-            val angleRad = Math.toRadians(targetAngle.toDouble())
-            
-            // Positioning chip at the targetAngle (Evenly distributed)
-            val distance = (maxWidth.value / 2f) * 0.88f
-            val xOffset = (distance * cos(angleRad)).dp
-            val yOffset = (distance * sin(angleRad)).dp
-
-            val percent = if (totalMs > 0) (app.usageTimeMs * 100 / totalMs.toLong()) else 0
-
+            // ── Inner Solid Circle (Strictly contains all text safely) ──
             Box(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(xOffset, yOffset)
-            ) {
-                AppChip(app, percent.toInt())
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppChip(app: AppUsageInfo, percent: Int) {
-    Surface(
-        color = Color.Black.copy(alpha = 0.1f),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-        modifier = Modifier.widthIn(min = 100.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier.size(26.dp),
+                    .fillMaxSize(0.74f) // Increased size to prevent text hitting the rings
+                    .clip(CircleShape)
+                    .background(Color(0xFF04040c))
+                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                app.icon?.let {
-                    Image(
-                        painter = rememberAsyncImagePainter(it),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Text("Total screen time", color = TextSecond, fontSize = 8.5.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = formatDuration(totalTimeMs),
+                        color = TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    val todayStr = remember {
+                        java.text.SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
+                    }
+                    Text("Today, $todayStr", color = TextSecond, fontSize = 8.5.sp)
+
+                    Spacer(Modifier.height(4.dp))
+
+                    val isLess = comparison <= 0
+                    Text(
+                        text = "${if (isLess) "↓" else "↑"} ${kotlin.math.abs(comparison)}% vs yesterday",
+                        color = if (isLess) AccentGreen else Color(0xFFF87171),
+                        fontSize = 9.5.sp, // Scaled to ensure full text fits inside
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
                     )
                 }
             }
-            Spacer(Modifier.width(6.dp))
-            Column {
-                Text(app.appName, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(
-                    text = "${formatDurationShort(app.usageTimeMs)} · $percent%",
-                    color = TextSecond,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
-                )
+        }
+
+        Spacer(Modifier.width(16.dp))
+
+        // ── Right Side: Compact Legend ──────────────────────────────────
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            topApps.forEachIndexed { index, app ->
+                LegendItem(app.appName, formatDurationShort(app.usageTimeMs), colors[index % colors.size], app.icon)
+            }
+            if (remainingMs > 0) {
+                LegendItem("Others", formatDurationShort(remainingMs), Color.White.copy(alpha = 0.12f), null)
             }
         }
     }
 }
+
+@Composable
+private fun LegendItem(name: String, duration: String, color: Color, icon: Any?) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 3.5.dp, height = 28.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color)
+        )
+
+        Box(
+            modifier = Modifier.size(28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            icon?.let {
+                Image(
+                    painter = rememberAsyncImagePainter(it),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+            } ?: Box(Modifier.size(20.dp).background(Color.White.copy(0.08f), CircleShape))
+        }
+
+        Column {
+            Text(
+                name,
+                color = TextPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                text = duration,
+                color = TextSecond,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun UsageRingLayout(topApps: List<AppUsageInfo>, totalMs: Float, colors: List<Color>) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val ringRadius = (size.minDimension / 2f) * 0.9f
+        val strokeWidth = 16.dp.toPx()
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+
+        // ── Circle 1: The Background Track (Subtle Outer Rim) ────────────────
+        drawCircle(
+            color = Color.White.copy(alpha = 0.05f),
+            radius = ringRadius,
+            center = Offset(centerX, centerY),
+            style = Stroke(width = strokeWidth)
+        )
+
+        val topAppsTotal = topApps.sumOf { it.usageTimeMs }.toFloat()
+
+        // ── 1. Draw "Others" segment FIRST (so it is at the bottom of the stack) ──
+        if (topAppsTotal < totalMs) {
+            val topAppsSweep = (topAppsTotal / totalMs) * 360f
+            val remainingSweep = 360f - topAppsSweep
+            drawArc(
+                color = Color.White.copy(alpha = 0.15f),
+                startAngle = -90f + topAppsSweep,
+                sweepAngle = remainingSweep,
+                useCenter = false,
+                topLeft = Offset(centerX - ringRadius, centerY - ringRadius),
+                size = Size(ringRadius * 2, ringRadius * 2),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+        }
+
+        // ── 2. Draw Apps (on top of the Others segment) ──
+        var startAngle = -90f
+        topApps.forEachIndexed { index, app ->
+            val sweepAngle = (app.usageTimeMs.toFloat() / totalMs) * 360f
+            val color = colors[index % colors.size]
+
+            drawArc(
+                color = color,
+                startAngle = startAngle,
+                sweepAngle = sweepAngle * 0.98f, // Slight gap for clarity
+                useCenter = false,
+                topLeft = Offset(centerX - ringRadius, centerY - ringRadius),
+                size = Size(ringRadius * 2, ringRadius * 2),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+
+            startAngle += sweepAngle
+        }
+    }
+}
+
 
 @Composable
 private fun InsightCard(comparison: Int) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 10.dp),
         colors = CardDefaults.cardColors(containerColor = GlassBg),
         shape = RoundedCornerShape(22.dp),
         border = BorderStroke(1.dp, GlassBorder)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -353,37 +328,30 @@ private fun InsightCard(comparison: Int) {
 
 @Composable
 private fun MostUsedAppsSection(stats: List<AppUsageInfo>, onShowAll: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = GlassBg),
-        shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(1.dp, GlassBorder)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Most used apps", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                Text(
-                    "Show all",
-                    color = Color(0xFF7fb4ff),
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { onShowAll() }
-                )
-            }
-            
-            Spacer(Modifier.height(14.dp))
-            
-            val topApps = stats.take(3)
-            val maxUsage = topApps.firstOrNull()?.usageTimeMs?.toFloat() ?: 1f
-            
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                topApps.forEachIndexed { index, app ->
-                    AppRow(app, app.usageTimeMs.toFloat() / maxUsage, index)
-                }
+    Column(modifier = Modifier.padding(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Most used apps", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+            Text(
+                "Show all",
+                color = Color(0xFF7fb4ff),
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { onShowAll() }
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        val topApps = stats.take(3)
+        val maxUsage = topApps.firstOrNull()?.usageTimeMs?.toFloat() ?: 1f
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            topApps.forEachIndexed { index, app ->
+                AppRow(app, app.usageTimeMs.toFloat() / maxUsage, index)
             }
         }
     }
@@ -459,15 +427,11 @@ private fun PermissionRequestCard(onGrant: () -> Unit) {
 }
 
 private fun formatDuration(ms: Long): String {
-    val hours = TimeUnit.MILLISECONDS.toHours(ms)
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+    return com.digitalmonk.app.core.utils.TimeUtils.formatDuration(ms)
 }
 
 private fun formatDurationShort(ms: Long): String {
-    val hours = TimeUnit.MILLISECONDS.toHours(ms)
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
-    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+    return com.digitalmonk.app.core.utils.TimeUtils.formatDurationShort(ms)
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF04040c)

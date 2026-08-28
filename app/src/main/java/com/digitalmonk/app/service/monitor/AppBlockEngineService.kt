@@ -13,7 +13,8 @@ import com.digitalmonk.app.data.local.db.AppDatabase
 import com.digitalmonk.app.data.local.db.entity.AppBlockRule
 import kotlinx.coroutines.*
 
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.DataStoreManager
+import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.core.utils.PermissionHelper
 import android.widget.Toast
 import android.os.Handler
@@ -26,7 +27,8 @@ class AppBlockEngineService : Service() {
 
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var db: AppDatabase
-    private lateinit var prefs: PrefsManager
+    private lateinit var dataStoreManager: DataStoreManager
+    private var settings = Settings()
 
     private var lastForegroundApp: String? = null
 
@@ -34,26 +36,21 @@ class AppBlockEngineService : Service() {
         super.onCreate()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         db = AppDatabase.getDatabase(this)
-        prefs = PrefsManager(this)
+        dataStoreManager = DataStoreManager(this)
+        
+        serviceScope.launch {
+            dataStoreManager.settings.collect {
+                settings = it
+            }
+        }
+        
         startForegroundService()
         startMonitoring()
     }
 
     private fun startForegroundService() {
-        val channelId = "app_blocker_channel"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "App Protection", NotificationManager.IMPORTANCE_LOW)
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Digital Monk Protection Active")
-            .setContentText("Monitoring app usage...")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
-            .build()
-
-        startForeground(1001, notification)
+        val notification = com.digitalmonk.app.service.notification.NotificationHelper.buildGuardianForegroundNotification(this)
+        startForeground(com.digitalmonk.app.core.utils.Constants.NOTIFICATION_ID_GUARDIAN, notification)
     }
 
     private fun startMonitoring() {
@@ -69,14 +66,18 @@ class AppBlockEngineService : Service() {
         val currentApp = getForegroundPackage() ?: return
 
         // Handle Banking Mode Timeout & Enforcement
-        if (prefs.isBankingBypassEnabled) {
-            val startTime = prefs.bankingBypassStartTime
+        if (settings.isBankingBypassEnabled) {
+            val startTime = settings.bankingBypassStartTime
             val now = System.currentTimeMillis()
             if (now - startTime > 10 * 60 * 1000L) {
                 // Auto-disable timeout
-                prefs.isBankingBypassEnabled = false
-                prefs.bankingBypassPackage = null
-                prefs.bankingBypassStartTime = 0L
+                dataStoreManager.updateSettings {
+                    it.copy(
+                        isBankingBypassEnabled = false,
+                        bankingBypassPackage = null,
+                        bankingBypassStartTime = 0L
+                    )
+                }
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@AppBlockEngineService, "Banking Mode expired.", Toast.LENGTH_SHORT).show()
                 }
@@ -85,14 +86,14 @@ class AppBlockEngineService : Service() {
                 if (!PermissionHelper.isAccessibilityEnabled(this)) {
                     val allowedPackages = listOf(
                         packageName, 
-                        prefs.bankingBypassPackage, 
+                        settings.bankingBypassPackage, 
                         PermissionHelper.getLauncherPackageName(this)
                     )
                     
-                    if (currentApp != null && !allowedPackages.contains(currentApp)) {
+                    if (!allowedPackages.contains(currentApp)) {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@AppBlockEngineService, 
-                                "Only ${prefs.bankingBypassPackage} is allowed during Banking Mode. Re-enable Accessibility for other apps.", 
+                                "Only ${settings.bankingBypassPackage} is allowed during Banking Mode. Re-enable Accessibility for other apps.", 
                                 Toast.LENGTH_LONG).show()
                         }
                         returnToHome()

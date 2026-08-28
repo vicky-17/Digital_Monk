@@ -43,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database",
                 )
+                    .enableMultiInstanceInvalidation()
                     .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = false)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build().also { INSTANCE = it }

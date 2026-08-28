@@ -1,7 +1,7 @@
 package com.digitalmonk.app.service.vpn
 
 import android.util.Log
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.service.vpn.blocklist.PornDomainBlocklist.isBlocked
 import java.util.Collections
 import java.util.Locale
@@ -28,16 +28,16 @@ sealed class FilterDecision {
     data class SafeSearchRedirect(val redirectIp: String) : FilterDecision()
 }
 
-class DnsFilterEngine(private val prefs: PrefsManager) {
+class DnsFilterEngine {
 
-    fun decide(domain: String?, queryType: Int): FilterDecision {
+    fun decide(domain: String?, queryType: Int, settings: Settings): FilterDecision {
         if (domain == null) return FilterDecision.Allow
 
         // Normalize the domain so "YouTube.com" matches "youtube.com"
         val lowerDomain = domain.lowercase(Locale.getDefault())
 
         // ── 1. SafeSearch enforcement ─────────────────────────────────────────
-        if (prefs.isEnforceSafeSearch || prefs.isSafeSearchEnabled) {
+        if (settings.isSafeSearchEnabled) {
             val safeIp: String? = SAFESEARCH_DOMAINS[lowerDomain]
 
             if (safeIp != null && queryType == DnsPacketParser.TYPE_A) {
@@ -47,7 +47,7 @@ class DnsFilterEngine(private val prefs: PrefsManager) {
         }
 
         // ── 2. Porn / adult content blocking ─────────────────────────────────
-        if (prefs.isBlockPorn || prefs.isSafeSearchEnabled) {
+        if (settings.isBlockPorn || settings.isSafeSearchEnabled) {
             if (isBlocked(lowerDomain)) {
                 Log.d(TAG, "🚫 Porn blocked: $domain")
                 return FilterDecision.Block
@@ -55,7 +55,7 @@ class DnsFilterEngine(private val prefs: PrefsManager) {
         }
 
         // ── 3. Custom user-defined domain blocklist ───────────────────────────
-        if (isCustomBlocked(lowerDomain)) {
+        if (isCustomBlocked(lowerDomain, settings)) {
             Log.d(TAG, "🚫 Custom blocked: $domain")
             return FilterDecision.Block
         }
@@ -63,9 +63,9 @@ class DnsFilterEngine(private val prefs: PrefsManager) {
         return FilterDecision.Allow
     }
 
-    private fun isCustomBlocked(domain: String?): Boolean {
-        // TODO Phase 3: Load from Room DB (custom domains parent adds manually)
-        return false
+    private fun isCustomBlocked(domain: String?, settings: Settings): Boolean {
+        if (domain == null) return false
+        return settings.blockedWebsites.contains(domain)
     }
 
     companion object {

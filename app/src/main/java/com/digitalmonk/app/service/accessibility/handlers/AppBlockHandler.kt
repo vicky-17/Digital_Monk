@@ -5,11 +5,10 @@ import android.content.Context
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.service.monitor.SettingsAppMonitor
 
 class AppBlockHandler(
-    private val prefs: PrefsManager,
     private val actionPerformer: ActionPerformer
 ) {
     fun interface ActionPerformer {
@@ -20,7 +19,7 @@ class AppBlockHandler(
         root: AccessibilityNodeInfo?,
         packageName: String?,
         eventType: Int,
-        context: Context?
+        settings: Settings
     ) {
         if (packageName == null) return
 
@@ -32,7 +31,7 @@ class AppBlockHandler(
             return
         }
 
-        if (!prefs.isAppBlocked(packageName)) return
+        if (!settings.blockedPackages.contains(packageName)) return
 
         Log.d(TAG, "🚫 Blocked: " + packageName + " → HOME")
         actionPerformer.performAction(AccessibilityService.GLOBAL_ACTION_HOME)

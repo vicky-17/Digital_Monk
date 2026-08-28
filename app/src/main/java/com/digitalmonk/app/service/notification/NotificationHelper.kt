@@ -33,14 +33,47 @@ object NotificationHelper {
      */
     @JvmStatic
     fun buildGuardianForegroundNotification(context: Context): Notification {
-        // TODO: Replace android.R.drawable.ic_secure with your own R.drawable.ic_monk_logo
-
         return NotificationCompat.Builder(context, Constants.CHANNEL_GUARDIAN)
-            .setSmallIcon(R.drawable.ic_secure)
+            .setSmallIcon(com.digitalmonk.app.R.mipmap.ic_launcher)
             .setContentTitle("Digital Monk Protection Active")
             .setContentText("Keeping this device safe in the background.")
             .setPriority(NotificationCompat.PRIORITY_LOW) // Keeps it silent
             .setOngoing(true) // Prevents the child from swiping it away
+            .build()
+    }
+
+    /**
+     * Builds a notification that shows real-time app usage stats.
+     * This replaces the static "Protection Active" notification with dynamic data.
+     */
+    fun buildUsageNotification(
+        context: Context,
+        appName: String?,
+        appUsageMs: Long,
+        totalUsageMs: Long,
+        launchCount: Int
+    ): Notification {
+        val title = if (appName != null) {
+            "$appName: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(appUsageMs)}"
+        } else {
+            "Digital Monk Protection Active"
+        }
+
+        val text = "Total Usage: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(totalUsageMs)} | Launched $launchCount times"
+
+        val openIntent = android.app.PendingIntent.getActivity(
+            context, 0, android.content.Intent(context, com.digitalmonk.app.ui.MainActivity::class.java),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(context, Constants.CHANNEL_GUARDIAN)
+            .setSmallIcon(com.digitalmonk.app.R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setContentIntent(openIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOnlyAlertOnce(true)
             .build()
     }
 

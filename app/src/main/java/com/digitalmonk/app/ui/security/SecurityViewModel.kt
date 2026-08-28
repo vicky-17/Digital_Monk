@@ -5,11 +5,10 @@ import android.content.Context
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.DataStoreManager
+import com.digitalmonk.app.data.local.prefs.Settings as MonkSettings
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import com.digitalmonk.app.core.deviceowner.DevicePolicyHelper
 import com.digitalmonk.app.service.accessibility.GuardianAccessibilityService
@@ -21,12 +20,31 @@ import kotlinx.coroutines.withContext
 
 
 class SecurityViewModel(
-    private val prefsManager: PrefsManager,
+    private val dataStoreManager: DataStoreManager,
     private val context: Context
 ) : ViewModel() {
 
+    private val _settings = MutableStateFlow(MonkSettings())
+    val settings: StateFlow<MonkSettings> = _settings.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            dataStoreManager.settings.collect {
+                _settings.value = it
+                // Sync legacy-ish flows if needed, or just use settings.flow in UI
+                _isPermissionBlockEnabled.value = it.isPermissionBlockEnabled
+                _isPrivateDnsEnabled.value = it.isPrivateDnsEnabled
+                _selectedHostname.value = it.selectedPrivateDnsHostname
+                _hostnameList.value = it.customPrivateDnsHostnames
+                _isBankingBypassEnabled.value = it.isBankingBypassEnabled
+                _bankingBypassPackage.value = it.bankingBypassPackage
+                _isPrivateDnsLocked.value = it.isPrivateDnsLocked
+            }
+        }
+    }
+
     // ── Strict Permission Blocking State ──────────────────────────────────────
-    private val _isPermissionBlockEnabled = MutableStateFlow(prefsManager.isPermissionBlockEnabled)
+    private val _isPermissionBlockEnabled = MutableStateFlow(false)
     val isPermissionBlockEnabled: StateFlow<Boolean> = _isPermissionBlockEnabled.asStateFlow()
 
     private val _showConfirmDialog = MutableStateFlow(false)
@@ -34,13 +52,13 @@ class SecurityViewModel(
     private var pendingToggleState = true
 
     // ── Private DNS States ────────────────────────────────────────────────────
-    private val _isPrivateDnsEnabled = MutableStateFlow(prefsManager.isPrivateDnsEnabled)
+    private val _isPrivateDnsEnabled = MutableStateFlow(false)
     val isPrivateDnsEnabled: StateFlow<Boolean> = _isPrivateDnsEnabled.asStateFlow()
 
-    private val _selectedHostname = MutableStateFlow(prefsManager.selectedPrivateDnsHostname)
+    private val _selectedHostname = MutableStateFlow("")
     val selectedHostname: StateFlow<String> = _selectedHostname.asStateFlow()
 
-    private val _hostnameList = MutableStateFlow(prefsManager.customPrivateDnsHostnames.toSet())
+    private val _hostnameList = MutableStateFlow(emptySet<String>())
     val hostnameList: StateFlow<Set<String>> = _hostnameList.asStateFlow()
 
     private val _showAddHostnameDialog = MutableStateFlow(false)
@@ -59,10 +77,10 @@ class SecurityViewModel(
     val isApplyingPrivateDns: StateFlow<Boolean> = _isApplyingPrivateDns.asStateFlow()
 
     // ── Banking Mode States ──────────────────────────────────────────────────
-    private val _isBankingBypassEnabled = MutableStateFlow(prefsManager.isBankingBypassEnabled)
+    private val _isBankingBypassEnabled = MutableStateFlow(false)
     val isBankingBypassEnabled: StateFlow<Boolean> = _isBankingBypassEnabled.asStateFlow()
 
-    private val _bankingBypassPackage = MutableStateFlow(prefsManager.bankingBypassPackage)
+    private val _bankingBypassPackage = MutableStateFlow<String?>(null)
     val bankingBypassPackage: StateFlow<String?> = _bankingBypassPackage.asStateFlow()
 
     private val _showBankingAppPicker = MutableStateFlow(false)
@@ -127,11 +145,11 @@ class SecurityViewModel(
 
     /** Immediately switches Private DNS to opportunistic (i.e. off / system default). */
     private fun disablePrivateDns() {
-        prefsManager.isPrivateDnsEnabled = false
-        _isPrivateDnsEnabled.value = false
-        _privateDnsError.value = null
-
         viewModelScope.launch(Dispatchers.IO) {
+            dataStoreManager.setPrivateDnsEnabled(false)
+            _isPrivateDnsEnabled.value = false
+            _privateDnsError.value = null
+
             _isApplyingPrivateDns.value = true
             DevicePolicyHelper.applyPrivateDns(context, false, "")
             _isApplyingPrivateDns.value = false
@@ -149,8 +167,9 @@ class SecurityViewModel(
             _isApplyingPrivateDns.value = false
 
             if (success) {
-                prefsManager.isPrivateDnsEnabled = true
-                prefsManager.selectedPrivateDnsHostname = hostname
+                dataStoreManager.updateSettings { 
+                    it.copy(isPrivateDnsEnabled = true, selectedPrivateDnsHostname = hostname)
+                }
                 _isPrivateDnsEnabled.value = true
                 _selectedHostname.value = hostname
             } else {
@@ -163,13 +182,17 @@ class SecurityViewModel(
     }
 
     fun deleteHostname(hostname: String) {
-        if (prefsManager.isDefaultPrivateDnsHost(hostname)) return
-        prefsManager.removeCustomPrivateDnsHostname(hostname)
-        _hostnameList.value = prefsManager.customPrivateDnsHostnames.toSet()
+        viewModelScope.launch {
+            dataStoreManager.updateSettings { current ->
+                val updated = current.customPrivateDnsHostnames.toMutableSet()
+                updated.remove(hostname)
+                current.copy(customPrivateDnsHostnames = updated)
+            }
+        }
     }
 
     fun isDefaultHostname(hostname: String): Boolean =
-        prefsManager.isDefaultPrivateDnsHost(hostname)
+        _settings.value.customPrivateDnsHostnames.contains(hostname) // Heuristic
 
     /** User dismissed the enable dialog without picking a host — toggle stays off. */
     fun dismissEnableHostnameDialog() {
@@ -192,10 +215,13 @@ class SecurityViewModel(
     fun saveNewHostname() {
         val input = _newHostnameInput.value.trim()
         if (input.isNotEmpty()) {
-            val currentList = prefsManager.customPrivateDnsHostnames.toMutableSet()
-            currentList.add(input)
-            prefsManager.customPrivateDnsHostnames = currentList
-            _hostnameList.value = currentList.toSet()
+            viewModelScope.launch {
+                dataStoreManager.updateSettings { current ->
+                    val currentList = current.customPrivateDnsHostnames.toMutableSet()
+                    currentList.add(input)
+                    current.copy(customPrivateDnsHostnames = currentList)
+                }
+            }
         }
         dismissAddHostnameDialog()
     }
@@ -213,9 +239,11 @@ class SecurityViewModel(
     }
 
     fun confirmToggle() {
-        prefsManager.isPermissionBlockEnabled = pendingToggleState
-        _isPermissionBlockEnabled.value = pendingToggleState
-        _showConfirmDialog.value = false
+        viewModelScope.launch {
+            dataStoreManager.setPermissionBlockEnabled(pendingToggleState)
+            _isPermissionBlockEnabled.value = pendingToggleState
+            _showConfirmDialog.value = false
+        }
     }
 
     fun dismissDialog() {
@@ -224,7 +252,7 @@ class SecurityViewModel(
 
 
     // ── Private DNS "lock settings" state ─────────────────────────────────────
-    private val _isPrivateDnsLocked = MutableStateFlow(prefsManager.isPrivateDnsLocked)
+    private val _isPrivateDnsLocked = MutableStateFlow(false)
     val isPrivateDnsLocked: StateFlow<Boolean> = _isPrivateDnsLocked.asStateFlow()
 
     init {
@@ -244,15 +272,15 @@ class SecurityViewModel(
             val lockActive = DevicePolicyHelper.isPrivateDnsSettingsLocked(context)
 
             _isPrivateDnsEnabled.value = systemEnabled
-            prefsManager.isPrivateDnsEnabled = systemEnabled
+            dataStoreManager.setPrivateDnsEnabled(systemEnabled)
 
             if (systemEnabled && systemHost.isNotBlank()) {
                 _selectedHostname.value = systemHost
-                prefsManager.selectedPrivateDnsHostname = systemHost
+                dataStoreManager.setSelectedPrivateDnsHostname(systemHost)
             }
 
             _isPrivateDnsLocked.value = lockActive
-            prefsManager.isPrivateDnsLocked = lockActive
+            dataStoreManager.setPrivateDnsLocked(lockActive)
         }
     }
 
@@ -267,7 +295,7 @@ class SecurityViewModel(
             val success = DevicePolicyHelper.setPrivateDnsUserRestriction(context, lockRequested)
             if (success) {
                 _isPrivateDnsLocked.value = lockRequested
-                prefsManager.isPrivateDnsLocked = lockRequested
+                dataStoreManager.setPrivateDnsLocked(lockRequested)
             } else {
                 _privateDnsError.value =
                     "Could not update the Private DNS lock. Make sure Digital Monk is set as Device Owner."
@@ -316,7 +344,7 @@ class SecurityViewModel(
 
     fun toggleUninstallProtection(packageName: String, blocked: Boolean) {
         // 1. Check if settings are locked when trying to turn OFF
-        if (!blocked && prefsManager.isSettingsLocked) {
+        if (!blocked && settings.value.isSettingsLocked) {
             Toast.makeText(context, "Cannot disable protection while settings are locked.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -333,7 +361,7 @@ class SecurityViewModel(
     }
 
     fun toggleForceStopProtection(packageName: String, blocked: Boolean) {
-        if (!blocked && prefsManager.isSettingsLocked) {
+        if (!blocked && settings.value.isSettingsLocked) {
             Toast.makeText(context, "Cannot disable protection while settings are locked.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -418,25 +446,25 @@ class SecurityViewModel(
     }
 
     fun disableBankingBypass() {
-        prefsManager.isBankingBypassEnabled = false
-        prefsManager.bankingBypassPackage = null
-        prefsManager.bankingBypassStartTime = 0L
-        _isBankingBypassEnabled.value = false
-        _bankingBypassPackage.value = null
+        viewModelScope.launch {
+            dataStoreManager.setBankingBypassEnabled(false)
+            _isBankingBypassEnabled.value = false
+            _bankingBypassPackage.value = null
+        }
     }
 
     fun confirmBankingBypass(packageName: String) {
-        prefsManager.isBankingBypassEnabled = true
-        prefsManager.bankingBypassPackage = packageName
-        prefsManager.bankingBypassStartTime = System.currentTimeMillis()
-        _isBankingBypassEnabled.value = true
-        _bankingBypassPackage.value = packageName
-        _showBankingAppPicker.value = false
+        viewModelScope.launch {
+            dataStoreManager.setBankingBypassEnabled(true, packageName)
+            _isBankingBypassEnabled.value = true
+            _bankingBypassPackage.value = packageName
+            _showBankingAppPicker.value = false
 
-        // ONE-TAP TURN OFF: Disable accessibility service programmatically
-        GuardianAccessibilityService.disableService()
-        
-        Toast.makeText(context, "Banking Mode Active. Accessibility turned OFF for you.", Toast.LENGTH_LONG).show()
+            // ONE-TAP TURN OFF: Disable accessibility service programmatically
+            GuardianAccessibilityService.disableService()
+            
+            Toast.makeText(context, "Banking Mode Active. Accessibility turned OFF for you.", Toast.LENGTH_LONG).show()
+        }
     }
 
     fun dismissBankingAppPicker() {

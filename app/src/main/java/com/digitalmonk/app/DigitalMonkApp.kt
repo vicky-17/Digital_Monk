@@ -1,6 +1,9 @@
 package com.digitalmonk.app
 
+import android.app.ActivityManager
 import android.app.Application
+import android.content.Context
+import android.os.Process
 import android.util.Log
 import com.digitalmonk.app.core.utils.AlarmScheduler.scheduleRepeating
 import com.digitalmonk.app.data.local.prefs.PrefsManager
@@ -23,30 +26,28 @@ import com.google.firebase.auth.FirebaseAuth
 class DigitalMonkApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "DigitalMonkApp process starting…")
+        val processName = getCurrentProcessName(this)
+        Log.i(TAG, "DigitalMonkApp process starting: $processName")
 
-        // 1. Initialize Firebase Auth (Ensure user is identified)
-        ensureUserIdentity()
+        if (isMainProcess(this)) {
+            Log.i(TAG, "Main process initialized. Setting up UI-related components.")
+            // 1. Initialize Firebase Auth (Ensure user is identified)
+            ensureUserIdentity()
+            
+            // 2. Initialize Notification Channels (Required for Android 8.0+)
+            createAll(this)
 
-        // 2. Initialize Notification Channels (Required for Android 8.0+)
-        createAll(this)
-
-        // 2. Check if the app setup is complete
-        val prefs = PrefsManager(this)
-
-        // If the user has a PIN, it means they've completed the onboarding.
-        // We start the "Immortal Guardian" (Watchdog) immediately.
-        if (prefs.hasPin()) {
-            Log.i(TAG, "Setup complete: Launching Guardian services.")
-
-            // Start the Foreground Watchdog Service
-            WatchdogService.start(this)
-            scheduleRepeating(this)
-
-            // Schedule the JobScheduler backup (Layer 4 Resilience)
-            WatchdogService.scheduleJobBackup(this)
-        } else {
-            Log.d(TAG, "First-time launch or setup incomplete. Skipping background services.")
+            // 3. Start background services from Main process (will spawn :guardian)
+            val prefs = PrefsManager(this)
+            if (prefs.hasPin()) {
+                Log.i(TAG, "Setup complete: Launching Guardian services.")
+                WatchdogService.start(this)
+                scheduleRepeating(this)
+                WatchdogService.scheduleJobBackup(this)
+            }
+        } else if (processName?.endsWith(":guardian") == true) {
+            Log.i(TAG, "Guardian process initialized. Setting up background components.")
+            createAll(this) // Notifications needed here too
         }
     }
 
@@ -67,5 +68,26 @@ class DigitalMonkApp : Application() {
 
     companion object {
         private const val TAG = "DigitalMonkApp"
+
+        fun isMainProcess(context: Context): Boolean {
+            val processName = getCurrentProcessName(context)
+            return processName == null || processName == context.packageName
+        }
+
+        private fun getCurrentProcessName(context: Context): String? {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                return Application.getProcessName()
+            }
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val processes = am.runningAppProcesses
+            if (processes != null) {
+                for (process in processes) {
+                    if (process.pid == Process.myPid()) {
+                        return process.processName
+                    }
+                }
+            }
+            return null
+        }
     }
 }

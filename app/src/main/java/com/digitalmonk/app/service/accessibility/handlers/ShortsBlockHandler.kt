@@ -3,11 +3,10 @@ package com.digitalmonk.app.service.accessibility.handlers
 import android.accessibilityservice.AccessibilityService
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.service.accessibility.detectors.ShortsDetector.shouldBlock
 
 class ShortsBlockHandler(
-    private val prefs: PrefsManager,
     private val actionPerformer: ActionPerformer
 ) {
     // State variable to prevent spamming the system logs
@@ -24,8 +23,8 @@ class ShortsBlockHandler(
      * Evaluates the current screen state and fires a back press if short-form
      * video is detected.
      */
-    fun handle(rootNode: AccessibilityNodeInfo?, packageName: String?) {
-        if (packageName == null || !prefs.isBlockShorts) {
+    fun handle(rootNode: AccessibilityNodeInfo?, packageName: String?, settings: Settings) {
+        if (packageName == null || !settings.isBlockShorts) {
             return
         }
 

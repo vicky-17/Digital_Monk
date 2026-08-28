@@ -16,7 +16,8 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.digitalmonk.app.core.utils.Constants
-import com.digitalmonk.app.data.local.prefs.PrefsManager
+import com.digitalmonk.app.data.local.prefs.DataStoreManager
+import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.service.vpn.DnsPacketParser.DnsQuery
 import com.digitalmonk.app.service.vpn.DnsPacketParser.buildARecordResponse
 import com.digitalmonk.app.service.vpn.DnsPacketParser.buildNxDomainResponse
@@ -25,6 +26,11 @@ import com.digitalmonk.app.service.vpn.DnsPacketParser.wrapUpstreamResponse
 import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartBeatEntity
 import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartbeatMonitorWorker.Companion.cancel
 import com.digitalmonk.app.service.vpn.heartbeat.VpnHeartbeatMonitorWorker.Companion.schedule
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
@@ -51,7 +57,11 @@ class DnsVpnService : VpnService() {
     private var isRunning = false
     private var vpnThread: Thread? = null
     private var filterEngine: DnsFilterEngine? = null
-    private var prefs: PrefsManager? = null
+    private var dataStoreManager: DataStoreManager? = null
+    
+    @Volatile
+    private var settings = Settings()
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private var heartbeatThread: Thread? = null
     private val connectivityProbeThread: Thread? = null
@@ -73,8 +83,14 @@ class DnsVpnService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        prefs = PrefsManager(this)
-        filterEngine = DnsFilterEngine(prefs!!)
+        dataStoreManager = DataStoreManager(this)
+        filterEngine = DnsFilterEngine()
+        
+        serviceScope.launch {
+            dataStoreManager?.settings?.collect {
+                settings = it
+            }
+        }
     }
 
 
@@ -132,8 +148,7 @@ class DnsVpnService : VpnService() {
             startConnectivityProbe()
             registerScreenOnReceiver()
 
-            // TODO: bindMonitorService();
-            if (prefs!!.isKeepVpnAlive) {
+            if (settings.isKeepVpnAlive) {
                 schedule(this)
             }
 
@@ -142,6 +157,11 @@ class DnsVpnService : VpnService() {
             Log.e(TAG, "Failed to start VPN", e)
             stopVpn(false)
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
     }
 
     private fun stopVpn(cleanStop: Boolean) {
@@ -182,7 +202,7 @@ class DnsVpnService : VpnService() {
                 if (query == null) continue
 
                 var response: ByteArray? = null
-                val decision = filterEngine!!.decide(query.domain, query.queryType)
+                val decision = filterEngine!!.decide(query.domain, query.queryType, settings)
 
                 when (decision) {
                     is FilterDecision.Block -> {
@@ -258,8 +278,14 @@ class DnsVpnService : VpnService() {
     }
 
     private fun writeHeartbeat(type: String?) {
-        prefs!!.lastVpnHeartbeatType = type
-        prefs!!.lastVpnHeartbeatTimestamp = System.currentTimeMillis()
+        serviceScope.launch {
+            dataStoreManager?.updateSettings {
+                it.copy(
+                    lastVpnHeartbeatType = type,
+                    lastVpnHeartbeatTimestamp = System.currentTimeMillis()
+                )
+            }
+        }
     }
 
     private fun startConnectivityProbe() { /* Implementation similar to heartbeat */
