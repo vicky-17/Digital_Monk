@@ -19,7 +19,8 @@ data class AppItem(
     val icon: Drawable?,
     val isSystemApp: Boolean,
     val isSocial: Boolean = false,
-    val isBlocked: Boolean = false
+    val isBlocked: Boolean = false,
+    val assignedPlanName: String? = null
 )
 
 // Represents the state of our 6-step wizard
@@ -67,10 +68,14 @@ class LocksViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Filtered apps for selection dialog
-    val selectableApps = combine(_installedApps, _searchQuery) { apps, query ->
+    val selectableApps = combine(_installedApps, _searchQuery, activeRules) { apps, query, rules ->
+        val ruleMap = rules.associateBy { it.packageName }
         apps.filter {
             it.name.contains(query, ignoreCase = true) ||
                     it.packageName.contains(query, ignoreCase = true)
+        }.map { app ->
+            val rule = ruleMap[app.packageName]
+            app.copy(assignedPlanName = rule?.planName)
         }.sortedBy { it.name }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -160,6 +165,13 @@ class LocksViewModel(
 
     fun toggleAppSelection(packageName: String) {
         _wizardState.update { state ->
+            // Check if app is already assigned to another plan (different from the current one if we're editing, 
+            // though the wizard currently defaults to new plans)
+            val assignedRule = activeRules.value.find { it.packageName == packageName }
+            if (assignedRule != null && assignedRule.planName != state.planName) {
+                return@update state
+            }
+
             val current = state.selectedPackages.toMutableSet()
             if (current.contains(packageName)) current.remove(packageName) else current.add(packageName)
             state.copy(selectedPackages = current)

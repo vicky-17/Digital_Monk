@@ -19,24 +19,33 @@ import com.digitalmonk.app.core.utils.PermissionHelper
 import android.widget.Toast
 import android.os.Handler
 import android.os.Looper
+import com.digitalmonk.app.ui.block.AppBlockOverlayManager
+import java.util.*
 
 class AppBlockEngineService : Service() {
 
-    private val serviceJob = Job()
+    private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
 
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var db: AppDatabase
     private lateinit var dataStoreManager: DataStoreManager
+    private lateinit var overlayManager: AppBlockOverlayManager
     private var settings = Settings()
 
     private var lastForegroundApp: String? = null
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         db = AppDatabase.getDatabase(this)
         dataStoreManager = DataStoreManager(this)
+        overlayManager = AppBlockOverlayManager(this, dataStoreManager)
+        
+        // Initialize usage tracker
+        val tracker = AppUsageTracker()
+        tracker.setup(this)
         
         serviceScope.launch {
             dataStoreManager.settings.collect {
@@ -56,16 +65,81 @@ class AppBlockEngineService : Service() {
     private fun startMonitoring() {
         serviceScope.launch {
             while (isActive) {
-                checkForegroundApp()
-                delay(1000) // Check every second
+                try {
+                    val currentApp = getForegroundPackage()
+                    android.util.Log.d("AppBlockEngine", "Detected foreground app: $currentApp")
+                    
+                    if (currentApp != null && !IGNORED_PACKAGES.contains(currentApp) && currentApp != packageName && currentApp != lastForegroundApp) {
+                        android.util.Log.d("AppBlockEngine", "App switched to: $currentApp")
+                        lastForegroundApp = currentApp
+                        
+                        // 1. Instantly trigger usage tracker switch
+                        AppUsageTracker.instance?.switchTo(currentApp)
+                        
+                        // 2. Update notification immediately after switch (with parameter)
+                        updateUnifiedNotification(currentApp)
+                        
+                        // 3. Instantly check if we should block
+                        checkForegroundApp(currentApp)
+                    } else if (currentApp == null || IGNORED_PACKAGES.contains(currentApp)) {
+                        // Switch to home or transient system UI
+                        if (lastForegroundApp != null) {
+                            lastForegroundApp = null
+                            AppUsageTracker.instance?.stopTracking()
+                            // Update notification to show home/protection state
+                            updateUnifiedNotification(null)
+                        }
+                    }
+
+                    // 4. Regular background update for ticking clock
+                    updateUnifiedNotification(currentApp)
+                    
+                    // 5. Regular background check for time limits/countdowns
+                    checkForegroundApp(currentApp)
+
+                } catch (e: Exception) {
+                    android.util.Log.e("AppBlockEngine", "Error in logic loop", e)
+                }
+                delay(700) // 1000ms high-frequency polling
             }
         }
     }
 
-    private suspend fun checkForegroundApp() {
-        val currentApp = getForegroundPackage() ?: return
+    private fun updateUnifiedNotification(currentPackage: String?) {
+        val stats = AppUsageTracker.instance?.getStatsSnapshot() ?: return
+        
+        val bypassExpiry = settings.appBypassMap[currentPackage ?: ""] ?: 0L
+        val regainLeft = maxOf(0L, bypassExpiry - System.currentTimeMillis())
+        
+        val notification = com.digitalmonk.app.service.notification.NotificationHelper.buildUsageNotification(
+            this,
+            stats.currentAppName,
+            stats.currentAppUsageMs,
+            stats.totalUsageTodayMs,
+            stats.totalLaunchesToday,
+            regainLeft,
+            stats.sessionDurationMs
+        )
+        
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(com.digitalmonk.app.core.utils.Constants.NOTIFICATION_ID_GUARDIAN, notification)
+    }
 
-        // Handle Banking Mode Timeout & Enforcement
+    private suspend fun checkForegroundApp(forcedPackage: String? = null) {
+        val currentApp = forcedPackage ?: getForegroundPackage() ?: return
+
+        // 1. If overlay is already showing, keep it until it's explicitly dismissed via its own button
+        if (AppBlockOverlayManager.isOverlayShowing) {
+            return
+        }
+
+        // 2. Skip our own app
+        if (currentApp == packageName) {
+            overlayManager.hide()
+            return
+        }
+
+        // 2. Handle Banking Mode Timeout & Enforcement
         if (settings.isBankingBypassEnabled) {
             val startTime = settings.bankingBypassStartTime
             val now = System.currentTimeMillis()
@@ -93,7 +167,7 @@ class AppBlockEngineService : Service() {
                     if (!allowedPackages.contains(currentApp)) {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@AppBlockEngineService, 
-                                "Only ${settings.bankingBypassPackage} is allowed during Banking Mode. Re-enable Accessibility for other apps.", 
+                                "Only ${settings.bankingBypassPackage} is allowed during Banking Mode.", 
                                 Toast.LENGTH_LONG).show()
                         }
                         returnToHome()
@@ -103,38 +177,89 @@ class AppBlockEngineService : Service() {
             }
         }
 
-        // Don't block our own app or if the app hasn't changed
-        if (currentApp == packageName || currentApp == lastForegroundApp) return
+        // 3. Check for temporary bypass
+        val bypassExpiry = settings.appBypassMap[currentApp]
+        if (bypassExpiry != null && System.currentTimeMillis() < bypassExpiry) {
+            overlayManager.hide()
+            return
+        }
+
+        // 4. Check if there is a rule for this app
+        val rule = db.appBlockDao().getRuleForPackage(currentApp)
+        
+        if (rule != null && shouldBlock(rule)) {
+            android.util.Log.d("AppBlockEngine", "Blocking $currentApp (${rule.planType})")
+            applyBlock(rule)
+        } else {
+            overlayManager.hide()
+        }
 
         lastForegroundApp = currentApp
-
-        // Check if there is a rule for this app
-        val rule = db.appBlockDao().getRuleForPackage(currentApp) ?: return
-
-        if (shouldBlock(rule)) {
-            applyBlock(rule)
-        }
     }
 
     private fun getForegroundPackage(): String? {
-        val time = System.currentTimeMillis()
-        val events = usageStatsManager.queryEvents(time - 2000, time)
-        val event = UsageEvents.Event()
-        var lastPackage: String? = null
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
-                lastPackage = event.packageName
+        val endTime = System.currentTimeMillis()
+
+        // We progressively look back further if we don't find anything in the initial window.
+        // This handles cases where the user stays on one screen for a long time.
+        val lookbackWindows = listOf(
+            5_000L,       // 5 seconds (fastest, covers active switching)
+            60_000L,      // 1 minute
+            300_000L,     // 5 minutes
+            3_600_000L,   // 1 hour
+            86_400_000L   // 24 hours (safety fallback)
+        )
+
+        for (window in lookbackWindows) {
+            val startTime = endTime - window
+            val events = usageStatsManager.queryEvents(startTime, endTime)
+            val event = UsageEvents.Event()
+
+            var latestPackage: String? = null
+            var latestTime = 0L
+
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                // Filter for ACTIVITY_RESUMED to find the most recent app opened
+                if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED && event.timeStamp > latestTime) {
+                    latestTime = event.timeStamp
+                    latestPackage = event.packageName
+                }
+            }
+
+            // If we found a package in this window, return it immediately.
+            // Otherwise, the loop continues to the next (larger) window.
+            if (latestPackage != null) {
+                return latestPackage
             }
         }
-        return lastPackage
+
+        return null
     }
 
     private fun shouldBlock(rule: AppBlockRule): Boolean {
+        // 1. Check Timing Mode
+        when (rule.timingMode) {
+            "WEEKLY" -> {
+                val calendar = Calendar.getInstance()
+                val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+                val adjustedDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
+                val isDayActive = (rule.activeDays and (1 shl (adjustedDay - 1))) != 0
+                if (!isDayActive) return false
+            }
+            "MULTI_DAY" -> {
+                if (rule.expiryTimestamp > 0 && System.currentTimeMillis() > rule.expiryTimestamp) {
+                    return false
+                }
+            }
+        }
+
+        // 2. Check Plan Type
         return when (rule.planType) {
             "STAY_FOCUSED" -> true
             "TIME_LIMIT" -> true
             "HABIT_TRAINING" -> true
+            "SCREEN_BREAK" -> true
             else -> false
         }
     }
@@ -144,22 +269,24 @@ class AppBlockEngineService : Service() {
         val adminComponent = android.content.ComponentName(this, com.digitalmonk.app.receiver.MonkDeviceAdminReceiver::class.java)
         val isDO = dpm.isDeviceOwnerApp(packageName)
 
+        val reason = when (rule.planType) {
+            "STAY_FOCUSED" -> "Stay Focused mode is active"
+            "TIME_LIMIT" -> "Daily time limit reached"
+            "HABIT_TRAINING" -> "Max launches reached"
+            "SCREEN_BREAK" -> "Time for a screen break"
+            else -> "App is restricted by plan"
+        }
+
         when (rule.blockMethod) {
-            "INTERSTITIAL" -> {
-                val intent = com.digitalmonk.app.ui.locks.InterstitialActivity.createIntent(
-                    this, rule.packageName, rule.appName, "${rule.allowedMinutes}m limit"
-                )
-                startActivity(intent)
-            }
             "SUSPEND" -> {
                 if (isDO) {
                     try {
                         dpm.setPackagesSuspended(adminComponent, arrayOf(rule.packageName), true)
                     } catch (e: Exception) {
-                        returnToHome()
+                        showFullBlock(rule.appName, rule.packageName, reason, rule.planType)
                     }
                 } else {
-                    returnToHome()
+                    showFullBlock(rule.appName, rule.packageName, reason, rule.planType)
                 }
             }
             "HIDE" -> {
@@ -167,29 +294,18 @@ class AppBlockEngineService : Service() {
                     try {
                         dpm.setApplicationHidden(adminComponent, rule.packageName, true)
                     } catch (e: Exception) {
-                        returnToHome()
+                        showFullBlock(rule.appName, rule.packageName, reason, rule.planType)
                     }
                 } else {
-                    returnToHome()
+                    showFullBlock(rule.appName, rule.packageName, reason, rule.planType)
                 }
             }
-            "KILL" -> {
-                // Kill requires a bit more effort on Android without accessibility,
-                // but DO can use forceStopPackage (hidden API in some versions but usually available to DO)
-                // We'll use returnToHome + a background kill hint
-                returnToHome()
-            }
-            else -> returnToHome()
+            else -> showFullBlock(rule.appName, rule.packageName, reason, rule.planType)
         }
+    }
 
-        // Anti-uninstall protection (if enabled)
-        if (rule.isAntiUninstallEnabled && isDO) {
-            try {
-                dpm.setUninstallBlocked(adminComponent, rule.packageName, true)
-            } catch (e: Exception) {
-                android.util.Log.e("AppBlockEngine", "Failed to set anti-uninstall", e)
-            }
-        }
+    private fun showFullBlock(appName: String, packageName: String, reason: String, planType: String) {
+        overlayManager.show(appName, packageName, reason, planType)
     }
 
     private fun returnToHome() {
@@ -203,6 +319,26 @@ class AppBlockEngineService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
+        overlayManager.hide()
         serviceJob.cancel()
+    }
+
+    companion object {
+        private const val TAG = "AppBlockEngine"
+
+        @Volatile
+        var instance: AppBlockEngineService? = null
+            private set
+
+        private val IGNORED_PACKAGES = setOf("android", "com.android.systemui", "com.miui.systemui.plugin")
+
+        fun onAppSwitched(packageName: String) {
+            val svc = instance ?: return
+            svc.serviceScope.launch {
+                svc.updateUnifiedNotification(packageName)
+                svc.checkForegroundApp(packageName)
+            }
+        }
     }
 }

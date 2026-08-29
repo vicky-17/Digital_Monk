@@ -10,6 +10,7 @@ import com.digitalmonk.app.data.local.prefs.Settings
 import com.digitalmonk.app.service.accessibility.handlers.AppBlockHandler
 import com.digitalmonk.app.service.accessibility.handlers.ShortsBlockHandler
 import com.digitalmonk.app.service.monitor.AppUsageTracker
+import com.digitalmonk.app.ui.block.AppBlockOverlayManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +24,12 @@ class GuardianAccessibilityService : AccessibilityService() {
     private val settingsFlow = MutableStateFlow(Settings())
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val eventChannel = Channel<AccessibilityEvent>(Channel.CONFLATED)
+    private val eventChannel = Channel<AccessibilityEventInfo>(Channel.CONFLATED)
+    
+    private data class AccessibilityEventInfo(
+        val eventType: Int,
+        val packageName: String?
+    )
     
     private var shortsBlockHandler: ShortsBlockHandler? = null
     private var appBlockHandler: AppBlockHandler? = null
@@ -42,13 +48,11 @@ class GuardianAccessibilityService : AccessibilityService() {
         }
 
         serviceScope.launch(Dispatchers.Default) {
-            eventChannel.receiveAsFlow().collect { event ->
+            eventChannel.receiveAsFlow().collect { eventInfo ->
                 try {
-                    processEvent(event)
+                    processEvent(eventInfo)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing event", e)
-                } finally {
-                    event.recycle()
                 }
             }
         }
@@ -57,8 +61,10 @@ class GuardianAccessibilityService : AccessibilityService() {
             ShortsBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
         appBlockHandler = AppBlockHandler(
             AppBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
-        appUsageTracker = AppUsageTracker()
-        appUsageTracker?.setup(this)
+        
+        // Use existing tracker if available, otherwise setup a new one
+        appUsageTracker = AppUsageTracker.instance ?: AppUsageTracker().apply { setup(this@GuardianAccessibilityService) }
+        
         serviceConnectedTimestamp = System.currentTimeMillis()
         lastEventTimestamp = 0L
         Log.i(TAG, "Guardian accessibility service connected")
@@ -81,8 +87,7 @@ class GuardianAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         lastEventTimestamp = System.currentTimeMillis()
         if (event == null) return
-        appUsageTracker?.onEvent(event)
-        
+
         val eventType = event.eventType
         val pkgSeq = event.packageName
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkgSeq != null) {
@@ -90,24 +95,29 @@ class GuardianAccessibilityService : AccessibilityService() {
         }
 
         // Conflate events: only process the latest one to avoid interaction timeouts
-        val eventCopy = AccessibilityEvent.obtain(event)
-        if (!eventChannel.trySend(eventCopy).isSuccess) {
-            eventCopy.recycle()
-        }
+        val eventInfo = AccessibilityEventInfo(event.eventType, event.packageName?.toString())
+        eventChannel.trySend(eventInfo)
     }
 
-    private fun processEvent(event: AccessibilityEvent) {
+    private fun processEvent(event: AccessibilityEventInfo) {
         val eventType = event.eventType
         val pkgSeq = event.packageName
         
+        // ── Block Escape Suppression ──────────────────────────────────────────
+        if (AppBlockOverlayManager.isOverlayShowing) {
+            val pkg = pkgSeq ?: ""
+            // If user tries to open Recents or System settings while overlay is up
+            if (pkg == "com.android.systemui" || pkg == "com.android.settings") {
+                Log.w(TAG, "Suppression: Forced HOME while overlay is showing")
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                return
+            }
+        }
+
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val root = rootInActiveWindow // Slow call
             if (root != null) {
-                try {
-                    if (findAndPerformBack(root)) return
-                } finally {
-                    root.recycle() // CRITICAL: Recycle to avoid leaks and hangs
-                }
+                if (findAndPerformBack(root)) return
             }
         }
 
@@ -118,21 +128,17 @@ class GuardianAccessibilityService : AccessibilityService() {
         }
 
         if (pkgSeq == null) return
-        val pkg = pkgSeq.toString()
+        val pkg = pkgSeq
         if (pkg == packageName) return
 
         val root = rootInActiveWindow
         if (root != null) {
-            try {
-                if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                    dumpAll(root, pkg)
-                }
-
-                shortsBlockHandler?.handle(root, pkg, settings)
-                appBlockHandler?.handle(root, pkg, eventType, settings)
-            } finally {
-                root.recycle() // CRITICAL: Recycle to avoid leaks and hangs
+            if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                dumpAll(root, pkg)
             }
+
+            shortsBlockHandler?.handle(root, pkg, settings)
+            appBlockHandler?.handle(root, pkg, eventType, settings)
         }
     }
 

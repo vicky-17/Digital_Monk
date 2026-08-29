@@ -9,7 +9,9 @@ import com.digitalmonk.app.core.utils.AlarmScheduler.scheduleRepeating
 import com.digitalmonk.app.data.local.prefs.PrefsManager
 import com.digitalmonk.app.service.WatchdogService
 import com.digitalmonk.app.service.notification.NotificationChannels.createAll
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 /**
  * Why we made this file:
@@ -26,8 +28,30 @@ import com.google.firebase.auth.FirebaseAuth
 class DigitalMonkApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        
+        // 1. Ensure Firebase is initialized in ALL processes
+        try {
+            FirebaseApp.initializeApp(this)
+            FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
+            Log.i(TAG, "Firebase and Crashlytics initialized.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Firebase", e)
+        }
+
         val processName = getCurrentProcessName(this)
         Log.i(TAG, "DigitalMonkApp process starting: $processName")
+        
+        // 2. Add global exception handler for "at any cost" reporting
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e(TAG, "CRITICAL CRASH in process $processName: ${throwable.message}", throwable)
+            FirebaseCrashlytics.getInstance().apply {
+                setCustomKey("process_name", processName ?: "unknown")
+                recordException(throwable)
+            }
+            // Give Crashlytics a moment to save the report
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
 
         if (isMainProcess(this)) {
             Log.i(TAG, "Main process initialized. Setting up UI-related components.")

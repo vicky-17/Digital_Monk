@@ -33,31 +33,12 @@ class AppUsageTracker {
     companion object {
         private const val HEARTBEAT_MS = 20_000L
 
-        // Truly ignore: never represents a real foreground app, and never
-        // implies the user left whatever app was actually open (empty
-        // package / OS-internal placeholder events).
-        private val IGNORED_PACKAGES = setOf("android")
-
-        // Transient system surfaces: notification shade, Quick Settings,
-        // Recents/Overview, MIUI control-center variants. These DO mean the
-        // user has left the previously-tracked app, so we must end that
-        // session — but they are not "apps" in their own right, so we don't
-        // start a new session for them either.
-        //
-        // Root cause this fixes: previously these packages were lumped into
-        // IGNORED_PACKAGES and the event was dropped entirely, which left
-        // the previous app's session open. The 20s heartbeat then kept
-        // crediting elapsed time to that app for as long as the user sat in
-        // Recents/the shade — this is what produced the 2x-14x inflation
-        // seen vs raw dumpsys totals (worst on apps people frequently swipe
-        // away from: Instagram, Telegram, Curbox).
-        private val TRANSIENT_SYSTEM_PACKAGES = setOf(
-            "com.android.systemui",
-            "com.miui.systemui.plugin"
-        )
+        @Volatile
+        var instance: AppUsageTracker? = null
+            private set
     }
 
-    private lateinit var service: GuardianAccessibilityService
+    private lateinit var context: Context
     private lateinit var dao: AppUsageDao
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -79,12 +60,13 @@ class AppUsageTracker {
     private var currentAppTotalMs = 0L
     private var currentAppLaunchCount = 0
 
-    fun setup(service: GuardianAccessibilityService) {
-        this.service = service
-        this.ownPackage = service.packageName
-        this.dao = AppDatabase.getDatabase(service).appUsageDao()
+    fun setup(context: Context) {
+        instance = this
+        this.context = context.applicationContext
+        this.ownPackage = context.packageName
+        this.dao = AppDatabase.getDatabase(context).appUsageDao()
 
-        val powerManager = service.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         screenOn = powerManager.isInteractive
 
         registerScreenReceiver()
@@ -93,7 +75,6 @@ class AppUsageTracker {
         trackingEnabled = true
 
         loadInitialTotals()
-        startHeartbeat()
     }
 
     private fun loadInitialTotals() {
@@ -102,40 +83,23 @@ class AppUsageTracker {
             val allStats = dao.getForDate(today)
             totalUsageTodayMs = allStats.sumOf { it.totalTime }
             totalLaunchesToday = allStats.sumOf { it.launchCount }
-            updateNotification()
         }
     }
 
-    fun onEvent(event: AccessibilityEvent?) {
-        if (!trackingEnabled) return
-        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-        if (!screenOn) return
-
-        val foreground = event.packageName?.toString() ?: return
-
-        if (foreground.isEmpty() || foreground in IGNORED_PACKAGES) return
-
-        if (foreground in TRANSIENT_SYSTEM_PACKAGES) {
-            // User pulled the shade / opened Recents / opened Quick
-            // Settings. End the current session so this idle time isn't
-            // silently attributed to whatever app was open before. We do
-            // NOT start a new session for the transient surface itself —
-            // the next real app's WINDOW_STATE_CHANGED event will do that.
-            endCurrentSession()
-            return
-        }
-
-        if (foreground == currentPackage) return
-
-        switchTo(foreground)
-    }
-
-    private fun switchTo(packageName: String) {
-        if (!trackingEnabled) return
+    fun switchTo(packageName: String) {
+        if (!trackingEnabled || packageName == currentPackage) return
         endCurrentSession()
 
         val nowElapsed = SystemClock.elapsedRealtime()
         currentPackage = packageName
+        
+        // Don't set currentAppName = packageName to avoid flickering.
+        // We look it up synchronously for the initial switch to be instant.
+        currentAppName = try {
+            val pm = context.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+        } catch (_: Exception) { null }
+
         sessionStartElapsed = nowElapsed
         sessionStartWall = System.currentTimeMillis()
         lastCommitElapsed = nowElapsed
@@ -144,22 +108,20 @@ class AppUsageTracker {
             val today = TimeUtils.todayKey()
             val entity = dao.get(today, packageName)
             // Use the maximum of what we have in DB vs what the system reports
-            // but for real-time we start from the current known total.
-            val systemStats = com.digitalmonk.app.core.utils.UsageStatsHelper(service).getTodayUsageStats()
+            val systemStats = com.digitalmonk.app.core.utils.UsageStatsHelper(context).getTodayUsageStats()
             val systemAppTotal = systemStats.find { it.packageName == packageName }?.usageTimeMs ?: 0L
 
             currentAppTotalMs = maxOf(entity?.totalTime ?: 0L, systemAppTotal)
             totalUsageTodayMs = maxOf(totalUsageTodayMs, systemStats.sumOf { it.usageTimeMs })
             currentAppLaunchCount = (entity?.launchCount ?: 0) + 1
-            currentAppName = try {
-                val pm = service.packageManager
-                pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-            } catch (_: Exception) { packageName }
 
             recordLaunch(packageName, sessionStartWall)
-            updateNotification()
         }
         startHeartbeat()
+    }
+
+    fun stopTracking() {
+        endCurrentSession()
     }
 
     private fun endCurrentSession() {
@@ -170,7 +132,6 @@ class AppUsageTracker {
         currentAppTotalMs = 0
         currentAppLaunchCount = 0
         stopHeartbeat()
-        updateNotification()
     }
 
     private fun commit(nowElapsed: Long) {
@@ -189,7 +150,6 @@ class AppUsageTracker {
             if (!trackingEnabled) return@launch
             segments.forEach { addUsage(it.date, packageName, it.hour, it.durationMs, it.endWall) }
         }
-        updateNotification()
     }
 
     private fun recordLaunch(packageName: String, wall: Long) {
@@ -227,26 +187,6 @@ class AppUsageTracker {
                 lastUsed = maxOf(existing?.lastUsed ?: 0L, wall)
             )
         )
-    }
-
-    private fun updateNotification() {
-        val nowElapsed = SystemClock.elapsedRealtime()
-        val sessionDuration = if (currentPackage != null) nowElapsed - sessionStartElapsed else 0L
-
-        val displayTotal = totalUsageTodayMs + sessionDuration
-        val displayApp = currentAppTotalMs + sessionDuration
-        val displayLaunches = if (currentPackage != null) currentAppLaunchCount else totalLaunchesToday
-
-        val notification = com.digitalmonk.app.service.notification.NotificationHelper.buildUsageNotification(
-            service,
-            currentAppName,
-            displayApp,
-            displayTotal,
-            displayLaunches
-        )
-
-        val manager = service.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        manager.notify(com.digitalmonk.app.core.utils.Constants.NOTIFICATION_ID_GUARDIAN, notification)
     }
 
     private data class Segment(val date: String, val hour: Int, val durationMs: Long, val endWall: Long)
@@ -320,10 +260,11 @@ class AppUsageTracker {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
         }
-        service.registerReceiver(screenReceiver, filter)
+        context.registerReceiver(screenReceiver, filter)
     }
 
     fun onDestroy() {
+        instance = null
         stopHeartbeat()
         val packageName = currentPackage.takeIf { trackingEnabled }
         if (packageName != null) {
@@ -339,7 +280,7 @@ class AppUsageTracker {
         }
         currentPackage = null
         try {
-            service.unregisterReceiver(screenReceiver)
+            context.unregisterReceiver(screenReceiver)
         } catch (_: Exception) {
         }
     }
@@ -355,4 +296,28 @@ class AppUsageTracker {
     }
 
     private fun serializeHourly(hourly: LongArray): String = hourly.joinToString(",")
+
+    data class UsageStatsSnapshot(
+        val currentPackage: String?,
+        val currentAppName: String?,
+        val currentAppUsageMs: Long,
+        val totalUsageTodayMs: Long,
+        val totalLaunchesToday: Int,
+        val sessionDurationMs: Long
+    )
+
+    fun getStatsSnapshot(): UsageStatsSnapshot {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val sessionDuration = if (currentPackage != null) nowElapsed - sessionStartElapsed else 0L
+        val lastCommitDuration = if (currentPackage != null) nowElapsed - lastCommitElapsed else 0L
+        
+        return UsageStatsSnapshot(
+            currentPackage = currentPackage,
+            currentAppName = currentAppName,
+            currentAppUsageMs = currentAppTotalMs + lastCommitDuration,
+            totalUsageTodayMs = totalUsageTodayMs + lastCommitDuration,
+            totalLaunchesToday = totalLaunchesToday,
+            sessionDurationMs = sessionDuration
+        )
+    }
 }

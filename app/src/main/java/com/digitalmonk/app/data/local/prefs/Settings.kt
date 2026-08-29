@@ -45,6 +45,7 @@ data class Settings(
     val isBankingBypassEnabled: Boolean = false,
     val bankingBypassPackage: String? = null,
     val bankingBypassStartTime: Long = 0L,
+    val appBypassMap: Map<String, Long> = emptyMap(),
     val lastVpnHeartbeatType: String? = "",
     val lastVpnHeartbeatTimestamp: Long = 0L,
     val isAppUsageTrackingEnabled: Boolean = true

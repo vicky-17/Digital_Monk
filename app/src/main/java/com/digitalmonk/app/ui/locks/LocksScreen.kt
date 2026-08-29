@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -77,7 +78,11 @@ fun LocksScreen(prefs: PrefsManager) {
     }
 
     var showWizard by remember { mutableStateOf(value = false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { newValue ->
+            // Return false to prevent the sheet from being hidden via gestures
+            newValue != SheetValue.Hidden
+        })
     val scope = rememberCoroutineScope()
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -811,9 +816,14 @@ private fun AppSectionHeader(title: String, count: Int) {
 
 @Composable
 private fun AppSelectorItem(app: com.digitalmonk.app.ui.locks.AppItem, isSelected: Boolean, viewModel: LocksViewModel) {
+    val wizardState by viewModel.wizardState.collectAsState()
+    val isAssignedElsewhere = app.assignedPlanName != null && app.assignedPlanName != wizardState.planName
+    
+    val alpha = if (isAssignedElsewhere) 0.4f else 1.0f
+
     Card(
-        onClick = { viewModel.toggleAppSelection(app.packageName) },
-        modifier = Modifier.fillMaxWidth(),
+        onClick = { if (!isAssignedElsewhere) viewModel.toggleAppSelection(app.packageName) },
+        modifier = Modifier.fillMaxWidth().alpha(alpha),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) AccentCyan.copy(alpha = 0.08f) else Color.Transparent
         ),
@@ -841,14 +851,27 @@ private fun AppSelectorItem(app: com.digitalmonk.app.ui.locks.AppItem, isSelecte
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(app.name, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(app.packageName, color = TextSecond, fontSize = 11.sp)
+                if (isAssignedElsewhere) {
+                    Text("In Plan: ${app.assignedPlanName}", color = AccentRed, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                } else {
+                    Text(app.packageName, color = TextSecond, fontSize = 11.sp)
+                }
             }
 
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { viewModel.toggleAppSelection(app.packageName) },
-                colors = CheckboxDefaults.colors(checkedColor = AccentCyan)
-            )
+            if (!isAssignedElsewhere) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { viewModel.toggleAppSelection(app.packageName) },
+                    colors = CheckboxDefaults.colors(checkedColor = AccentCyan)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Lock,
+                    contentDescription = "Locked",
+                    tint = TextSecond,
+                    modifier = Modifier.size(20.dp).padding(end = 4.dp)
+                )
+            }
         }
     }
 }

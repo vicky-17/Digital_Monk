@@ -43,30 +43,40 @@ object NotificationHelper {
     }
 
     /**
-     * Builds a notification that shows real-time app usage stats.
-     * This replaces the static "Protection Active" notification with dynamic data.
+     * Builds a notification that shows real-time app usage stats and regain timers.
+     * Uses Android's "Live Update" pattern for real-time status chips and promoted ongoing status.
      */
     fun buildUsageNotification(
         context: Context,
         appName: String?,
         appUsageMs: Long,
         totalUsageMs: Long,
-        launchCount: Int
+        launchCount: Int,
+        bypassRemainingMs: Long = 0L,
+        sessionDurationMs: Long = 0L
     ): Notification {
-        val title = if (appName != null) {
-            "$appName: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(appUsageMs)}"
-        } else {
-            "Digital Monk Protection Active"
-        }
+        val title: String
+        val text: String
 
-        val text = "Total Usage: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(totalUsageMs)} | Launched $launchCount times"
+        if (bypassRemainingMs > 0) {
+            title = "⏳ Regain active: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(bypassRemainingMs)} left"
+            text = "Total Usage: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(totalUsageMs)}"
+        } else if (appName != null) {
+            // App Open Design
+            title = "$appName: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(appUsageMs)}"
+            text = "Total Usage: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(totalUsageMs)}"
+        } else {
+            // Home Screen / System Design
+            title = "Total Usage: ${com.digitalmonk.app.core.utils.TimeUtils.formatDuration(totalUsageMs)}"
+            text = "Digital Monk protection is active."
+        }
 
         val openIntent = android.app.PendingIntent.getActivity(
             context, 0, android.content.Intent(context, com.digitalmonk.app.ui.MainActivity::class.java),
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(context, Constants.CHANNEL_GUARDIAN)
+        val builder = NotificationCompat.Builder(context, Constants.CHANNEL_GUARDIAN)
             .setSmallIcon(com.digitalmonk.app.R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(text)
@@ -74,7 +84,10 @@ object NotificationHelper {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
-            .build()
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
+
+        return builder.build()
     }
 
     /**
