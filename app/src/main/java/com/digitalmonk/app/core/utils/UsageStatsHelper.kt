@@ -9,28 +9,52 @@ class UsageStatsHelper(private val context: Context) {
 
     private val packageManager = context.packageManager
 
+    /**
+     * Returns usage for the calendar day containing [date] - whether that's
+     * a fully-elapsed past day, today (still in progress), or (defensively)
+     * a day that hasn't started yet.
+     *
+     * This is the ONLY place day-boundary math happens. Every caller - the
+     * dashboard's "today" card, the weekly breakdown's per-day loop, or
+     * anything else - goes through here, so there's no second code path
+     * that can independently get the "today" boundary wrong.
+     *
+     * Previously, endTime was always computed as 23:59:59.999 on [date],
+     * which is correct for a day that has already fully happened but is a
+     * FUTURE timestamp for today. UsageReconstructor credits whatever app
+     * is currently open with time up to endTime, so a future endTime
+     * attributed foreground time all the way through to midnight tonight -
+     * confirmed via a live screenshot showing "17h 58m" for Digital Monk
+     * at 7:39 AM, hours before that much time could have elapsed.
+     */
     fun getUsageStatsForDay(date: Calendar): List<AppUsageInfo> {
-        val calendar = date.clone() as Calendar
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
+        val dayStart = date.clone() as Calendar
+        dayStart.set(Calendar.HOUR_OF_DAY, 0)
+        dayStart.set(Calendar.MINUTE, 0)
+        dayStart.set(Calendar.SECOND, 0)
+        dayStart.set(Calendar.MILLISECOND, 0)
         // Ensure we are inside the target day (UsageStatsManager buckets are strict)
-        val startTime = calendar.timeInMillis + 1
+        val startTime = dayStart.timeInMillis + 1
 
-        calendar.add(Calendar.DAY_OF_YEAR, 1)
-        // Stay within the target day
-        val endTime = calendar.timeInMillis - 1
+        val dayEnd = dayStart.clone() as Calendar
+        dayEnd.add(Calendar.DAY_OF_YEAR, 1)
+        val naturalEndOfDay = dayEnd.timeInMillis - 1
 
-        // For historical days, trust the System (UsageStatsManager) 100%
-        // because that's what Digital Wellbeing does. We don't merge with DB
-        // to avoid inflation from potentially noisy Accessibility data.
+        val now = System.currentTimeMillis()
+
+        // The whole day is still in the future (e.g. tomorrow, viewed from
+        // today) - nothing has happened yet, don't even query.
+        if (startTime > now) return emptyList()
+
+        // Never use a boundary later than "now": for a past day this is a
+        // no-op (naturalEndOfDay is already < now); for today, this is the
+        // fix - clip to the current instant instead of tonight's midnight.
+        val endTime = minOf(naturalEndOfDay, now)
+
         return getUsageStatsInRange(startTime, endTime)
     }
 
-    fun getTodayUsageStats(): List<AppUsageInfo> {
-        return getUsageStatsForDay(Calendar.getInstance())
-    }
+    fun getTodayUsageStats(): List<AppUsageInfo> = getUsageStatsForDay(Calendar.getInstance())
 
 
     private fun getUsageStatsInRange(startTime: Long, endTime: Long): List<AppUsageInfo> {
