@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.DigitalMonk" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:statusBarColor">@android:color/black</item>
+    <style name="Theme.CurbMe" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#04040C</item>
+        <item name="android:statusBarColor">#04040C</item>
+        <item name="android:navigationBarColor">#04040C</item>
+    </style>
+
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#04040C</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.CurbMe</item>
     </style>
 </resources>

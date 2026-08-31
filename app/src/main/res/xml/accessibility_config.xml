@@ -6,4 +6,4 @@
         android:canRetrieveWindowContent="true"
         android:description="@string/accessibility_service_description"
         android:notificationTimeout="100"
-        android:settingsActivity="com.example.digitalmonk.ui.MainActivity" />
+        android:settingsActivity="com.curbme.app.ui.MainActivity" />

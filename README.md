@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧘 Digital Monk
+# 🛡️ CurbMe
 
 ### Parental or Self Control App for Android
 
@@ -22,11 +22,11 @@
 ## 📖 Overview
 
 
-**Digital Monk** is a fully self-contained self-control application for Android, designed to give self-control to everyone who are addicted to their device usage without requiring root access, MDM enrollment, or cloud accounts. Every enforcement mechanism runs locally on the device.
+**CurbMe** is a fully self-contained self-control application for Android, designed to give self-control to everyone who are addicted to their device usage without requiring root access, MDM enrollment, or cloud accounts. Every enforcement mechanism runs locally on the device.
 
 ### Why This Project Stands Out
 
-Most parental control apps are either cloud-dependent or trivially bypassable. Digital Monk layers **7 independent protection mechanisms** that must all be simultaneously defeated to disable the app — without root, that's practically impossible.
+Most parental control apps are either cloud-dependent or trivially bypassable. CurbMe layers **7 independent protection mechanisms** that must all be simultaneously defeated to disable the app — without root, that's practically impossible.
 
 ---
 

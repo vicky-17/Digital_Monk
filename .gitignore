@@ -31,3 +31,6 @@ app/google-services.json
 secrets.properties
 *.env
 *.env.*
+
+.artifacts/
+*.artifact.md

@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Digital Monk"
+rootProject.name = "CurbMe"
 include(":app")

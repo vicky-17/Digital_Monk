@@ -1,38 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Digital Monk</string>
-    <string name="accessibility_service_description">Digital Monk monitors the screen to block short-form video content like YouTube Shorts, Instagram Reels, and TikTok.</string>
-    <string name="vpn_service_description">Digital Monk uses VPN to use DNS filter.</string>
-    <string name="device_admin_description">Digital Monk uses Device Admin Permission for Uninstaller Protection.</string>
+    <string name="app_name">CurbMe</string>
+    <string name="accessibility_service_description">CurbMe monitors the screen to block short-form video content like YouTube Shorts, Instagram Reels, and TikTok.</string>
+    <string name="vpn_service_description">CurbMe uses VPN to use DNS filter.</string>
+    <string name="device_admin_description">CurbMe uses Device Admin Permission for Uninstaller Protection.</string>
 
     <!-- ── SettingsBlockOverlayService strings ──────────────────────────── -->
-    <string name="overlay_protected_label">🛡️  Protected by Digital Monk</string>
+    <string name="overlay_protected_label">🛡️  Protected by CurbMe</string>
     <string name="overlay_shield_emoji">🛡️</string>
-    <string name="overlay_protected_title">Protected by Digital Monk</string>
+    <string name="overlay_protected_title">Protected by CurbMe</string>
     <string name="overlay_protected_subtitle">This page is restricted.\nA parent PIN is required to make changes here.</string>
     <string name="overlay_go_home_button">← Go to Home Screen</string>
-    <string name="overlay_notification_title">Digital Monk — Settings Protected</string>
+    <string name="overlay_notification_title">CurbMe — Settings Protected</string>
     <string name="overlay_notification_text">Restricted page blocked</string>
 
     <!-- ── GuardianOverlayService strings ───────────────────────────────── -->
     <string name="guardian_overlay_title_frozen">Guardian Service Needs Attention</string>
     <string name="guardian_overlay_title_missing">Accessibility Permission Required</string>
     <string name="guardian_overlay_subtitle_frozen">The Guardian service is enabled but not responding. Please toggle it OFF and ON again.</string>
-    <string name="guardian_overlay_subtitle_missing">Digital Monk needs Accessibility permission to block harmful content and short-form videos.</string>
+    <string name="guardian_overlay_subtitle_missing">CurbMe needs Accessibility permission to block harmful content and short-form videos.</string>
     <string name="guardian_overlay_btn_open_accessibility">Open Accessibility Settings</string>
     <string name="guardian_overlay_btn_grant">Grant Permission</string>
     <string name="guardian_guide_how_to_fix">How to fix:</string>
     <string name="guardian_guide_how_to_enable">How to enable:</string>
     <string name="guardian_mini_tip_frozen">Toggle OFF → ON</string>
-    <string name="guardian_mini_tip_missing">Enable Digital Monk</string>
-    <string name="guardian_overlay_notification_title">Action Required — Digital Monk</string>
+    <string name="guardian_mini_tip_missing">Enable CurbMe</string>
+    <string name="guardian_overlay_notification_title">Action Required — CurbMe</string>
     <string name="guardian_overlay_notification_text">Accessibility permission needed for protection</string>
 
     <!-- ── GuardianOverlayService step arrays ───────────────────────────── -->
     <string-array name="guardian_steps_frozen">
         <item>1️⃣  Tap \'Open Accessibility Settings\' below</item>
         <item>2️⃣  Tap on \'Downloaded Apps\' below</item>
-        <item>3️⃣  Find \'Digital Monk\' in the list</item>
+        <item>3️⃣  Find \'CurbMe\' in the list</item>
         <item>4️⃣  Tap it and toggle the switch OFF</item>
         <item>5️⃣  Wait 2 seconds, then toggle it ON again</item>
         <item>6️⃣  Return here — the block will auto-lift</item>
@@ -41,19 +41,19 @@
     <string-array name="guardian_steps_missing">
         <item>1️⃣  Tap \'Grant Permission\' below</item>
         <item>2️⃣  Tap on \'Downloaded Apps\' below</item>
-        <item>3️⃣  Find \'Digital Monk\' in the list</item>
-        <item>4️⃣  Tap \'Use Digital Monk\'</item>
+        <item>3️⃣  Find \'CurbMe\' in the list</item>
+        <item>4️⃣  Tap \'Use CurbMe\'</item>
         <item>5️⃣  Tap \'Allow\' on the confirmation dialog</item>
         <item>6️⃣  Return here — protection activates instantly</item>
     </string-array>
 
-    <string name="protected_by_digital_monk">🛡️  Protected by Digital Monk</string>
-    <string name="splash_protected_by">🛡️  Protected by Digital Monk</string>
+    <string name="protected_by_curbme">🛡️  Protected by CurbMe</string>
+    <string name="splash_protected_by">🛡️  Protected by CurbMe</string>
     <string name="warning_emoji">⚠️</string>
-    <string name="page_is_blocked">This page is blocked by Digital Monk</string>
+    <string name="page_is_blocked">This page is blocked by CurbMe</string>
     <string name="go_to_home">← Go to Home Screen</string>
 
-    <string name="blocked_page_protected_by">🛡️ Protected by Digital Monk</string>
+    <string name="blocked_page_protected_by">🛡️ Protected by CurbMe</string>
     <string name="blocked_page_message">⚠️ This page is blocked. ⚠️</string>
     <string name="blocked_page_go_home">Go to Home</string>
 

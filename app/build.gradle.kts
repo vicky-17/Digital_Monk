@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.digitalmonk.app"
+    namespace = "com.curbme.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.digitalmonk.app"
+        applicationId = "com.curbme.app"
         minSdk = 31
         targetSdk = 37
         versionCode = 1
@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     // ── Core ────────────────────────────────────────────────────────────────
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
 
