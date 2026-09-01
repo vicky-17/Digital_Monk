@@ -28,6 +28,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Warning
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.curbme.app.core.utils.PermissionHelper
 import com.curbme.app.data.local.prefs.PrefsManager
 import com.curbme.app.data.models.AppUsageInfo
 import com.curbme.app.service.vpn.DnsVpnService
@@ -58,6 +64,24 @@ fun DashboardScreen(
     var blockShorts by remember { mutableStateOf(prefs.isBlockShorts) }
     var showLockDialog by remember { mutableStateOf(false) }
     var showAlwaysOnDialog by remember { mutableStateOf(false) }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isAccessibilityGranted by remember {
+        mutableStateOf(PermissionHelper.isAccessibilityEnabled(context))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isAccessibilityGranted = PermissionHelper.isAccessibilityEnabled(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val isLocked = remember(refreshKey) { PrefsManager(context).isSettingsLocked }
     
@@ -82,6 +106,7 @@ fun DashboardScreen(
     DashboardContent(
         safeSearchEnabled = safeSearchEnabled,
         blockShorts = blockShorts,
+        isAccessibilityGranted = isAccessibilityGranted,
         isLocked = isLocked,
         onSafeSearchToggle = { isChecked ->
             val prefsCheck = PrefsManager(context)
@@ -113,14 +138,30 @@ fun DashboardScreen(
                 Toast.makeText(context, "Settings are locked for ${formatRemainingTime(prefsCheck.lockUntil - System.currentTimeMillis())}", Toast.LENGTH_LONG).show()
                 return@DashboardContent
             }
+            if (newVal && !PermissionHelper.isAccessibilityEnabled(context)) {
+                showAccessibilityDialog = true
+                return@DashboardContent
+            }
             blockShorts = newVal
             prefs.isBlockShorts = newVal
+        },
+        onGrantAccessibilityClick = {
+            PermissionHelper.openAccessibilityServiceScreen(context)
         },
         onLockClick = { if (!isLocked) showLockDialog = true },
         onLockdownVpnClick = { showAlwaysOnDialog = true },
         onNavigateToUsageStats = onNavigateToUsageStats,
         usageViewModel = usageViewModel
     )
+
+    if (showAccessibilityDialog) {
+        AccessibilityPromptDialog(
+            onGrantClick = {
+                PermissionHelper.openAccessibilityServiceScreen(context)
+            },
+            onDismiss = { showAccessibilityDialog = false }
+        )
+    }
 
     if (showLockDialog) {
         LockSettingsDialog(
@@ -168,9 +209,11 @@ fun DashboardScreen(
 fun DashboardContent(
     safeSearchEnabled: Boolean,
     blockShorts: Boolean,
+    isAccessibilityGranted: Boolean = true,
     isLocked: Boolean,
     onSafeSearchToggle: (Boolean) -> Unit,
     onBlockShortsToggle: (Boolean) -> Unit,
+    onGrantAccessibilityClick: () -> Unit = {},
     onLockClick: () -> Unit,
     onLockdownVpnClick: () -> Unit,
     onNavigateToUsageStats: () -> Unit,
@@ -251,6 +294,54 @@ fun DashboardContent(
                     isEnabled = blockShorts,
                     onToggle = onBlockShortsToggle
                 )
+
+                if (blockShorts && !isAccessibilityGranted) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Permission Required",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Accessibility is disabled. Grant permission to activate shorts blocking.",
+                                    color = Color(0xFFCBD5E1),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = onGrantAccessibilityClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -395,6 +486,88 @@ private fun DashboardActionCard(
                 Text(description, color = TextSecond, fontSize = 12.sp)
             }
             Text("→", color = TextMuted, fontSize = 18.sp)
+        }
+    }
+}
+
+@Composable
+private fun AccessibilityPromptDialog(
+    onGrantClick: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(Color(0xFF3B82F6).copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "Accessibility Required",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Shorts & Reels Blocking",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    text = "To block YouTube Shorts, Instagram Reels, and TikTok, CurbMe requires Accessibility Service permission to detect short video feeds in real time.",
+                    fontSize = 13.sp,
+                    color = Color(0xFFCBD5E1),
+                    lineHeight = 18.sp
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                Button(
+                    onClick = {
+                        onGrantClick()
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Grant Permission", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel", color = Color(0xFF64748B), fontSize = 14.sp)
+                }
+            }
         }
     }
 }

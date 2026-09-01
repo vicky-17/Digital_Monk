@@ -1,5 +1,10 @@
 package com.curbme.app.ui.components.dialogs
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -19,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.curbme.app.core.utils.PermissionHelper
+import com.curbme.app.receiver.CurbMeDeviceAdminReceiver
 
 @Composable
 fun AntiUninstallPermissionDialog(
@@ -28,6 +34,32 @@ fun AntiUninstallPermissionDialog(
     onPermissionGrantedCheck: () -> Unit
 ) {
     val context = LocalContext.current
+
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        onPermissionGrantedCheck()
+    }
+
+    fun launchDeviceAdmin() {
+        try {
+            val adminComponent = ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
+            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                putExtra(
+                    DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                    "Activate to prevent CurbMe from being uninstalled without parental permission."
+                )
+            }
+            if (intent.resolveActivity(context.packageManager) != null) {
+                deviceAdminLauncher.launch(intent)
+            } else {
+                PermissionHelper.openDeviceAdminSettings(context)
+            }
+        } catch (_: Exception) {
+            PermissionHelper.openDeviceAdminSettings(context)
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -85,7 +117,7 @@ fun AntiUninstallPermissionDialog(
                     title = "Device Administrator",
                     description = "Prevents direct uninstallation of CurbMe.",
                     isGranted = isDeviceAdminGranted,
-                    onGrantClick = { PermissionHelper.openDeviceAdminSettings(context) }
+                    onGrantClick = { launchDeviceAdmin() }
                 )
 
                 Spacer(Modifier.height(12.dp))

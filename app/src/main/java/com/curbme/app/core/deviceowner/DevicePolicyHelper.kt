@@ -227,7 +227,7 @@ object DevicePolicyHelper {
      */
     fun setControlDisabledPackages(context: Context, packages: List<String>): Boolean {
         val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return false
-        val adminComponent = ComponentName(context, "com.curbme.app.receiver.MonkDeviceAdminReceiver")
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (!dpm.isDeviceOwnerApp(context.packageName)) return false
 
@@ -245,7 +245,7 @@ object DevicePolicyHelper {
      */
     fun getControlDisabledPackages(context: Context): List<String> {
         val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return emptyList()
-        val adminComponent = ComponentName(context, "com.curbme.app.receiver.MonkDeviceAdminReceiver")
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (!dpm.isDeviceOwnerApp(context.packageName)) return emptyList()
 

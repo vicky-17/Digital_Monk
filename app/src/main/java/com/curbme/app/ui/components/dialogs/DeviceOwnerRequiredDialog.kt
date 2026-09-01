@@ -27,7 +27,7 @@ import androidx.compose.ui.window.Dialog
 fun DeviceOwnerRequiredDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val adbCommand = "adb shell dpm set-device-owner com.curbme.app/.receiver.MonkDeviceAdminReceiver"
+    val adbCommand = "adb shell dpm set-device-owner com.curbme.app/.receiver.CurbMeDeviceAdminReceiver"
 
     Dialog(onDismissRequest = onDismiss) {
         Card(

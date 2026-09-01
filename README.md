@@ -113,7 +113,7 @@ com.example.digitalmonk/
 │   ├── overlay/       # OverlayService, SettingsBlockOverlayService
 │   └── monitor/       # WatchdogService, ProtectionStateMonitor,
 │                      #   SettingsAppMonitor, SettingsPageReader
-├── receiver/          # BootReceiver, AlarmRestartReceiver, MonkDeviceAdminReceiver
+├── receiver/          # BootReceiver, AlarmRestartReceiver, CurbMeDeviceAdminReceiver
 └── ui/
     ├── theme/         # Color, Type, Theme (Inknut Antiqua + Inclusive Sans)
     ├── components/    # Reusable cards, dialogs, common composables
