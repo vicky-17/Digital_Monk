@@ -48,7 +48,8 @@ data class Settings(
     val appBypassMap: Map<String, Long> = emptyMap(),
     val lastVpnHeartbeatType: String? = "",
     val lastVpnHeartbeatTimestamp: Long = 0L,
-    val isAppUsageTrackingEnabled: Boolean = true
+    val isAppUsageTrackingEnabled: Boolean = true,
+    val isAutoHealEnabled: Boolean = true
 ) {
     val isSettingsLocked: Boolean
         get() {

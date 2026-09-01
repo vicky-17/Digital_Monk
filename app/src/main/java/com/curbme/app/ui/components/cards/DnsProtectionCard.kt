@@ -179,13 +179,13 @@ fun Switch(
 }
 
 // 2. Previews
-@Preview(name = "DNS Card — Unlocked", showBackground = true, backgroundColor = 0xFF080E1A)
+@Preview(name = "DNS Card — Disabled", showBackground = true, backgroundColor = 0xFF080E1A)
 @Composable
-fun DnsProtectionCardPreviewUnlocked() {
+fun DnsProtectionCardPreviewDisabled() {
     Box(Modifier.padding(16.dp)) {
         DnsProtectionCard(
-            isEnabled = true,
-            selectedHostname = "dns.adguard.com",
+            isEnabled = false,
+            selectedHostname = "",
             isSettingsLocked = false,
             isTimedLockActive = false,
             lockUntil = 0L,
@@ -198,7 +198,26 @@ fun DnsProtectionCardPreviewUnlocked() {
     }
 }
 
-@Preview(name = "DNS Card — Locked", showBackground = true, backgroundColor = 0xFF080E1A)
+@Preview(name = "DNS Card — Set to DNS (Active)", showBackground = true, backgroundColor = 0xFF080E1A)
+@Composable
+fun DnsProtectionCardPreviewSetToDns() {
+    Box(Modifier.padding(16.dp)) {
+        DnsProtectionCard(
+            isEnabled = true,
+            selectedHostname = "family.adguard-dns.com",
+            isSettingsLocked = true,
+            isTimedLockActive = false,
+            lockUntil = 0L,
+            isDeviceOwner = true,
+            onDnsToggle = {},
+            onHostClick = {},
+            onSettingsLockToggle = {},
+            onLockClick = {}
+        )
+    }
+}
+
+@Preview(name = "DNS Card — Set to DNS & Locked", showBackground = true, backgroundColor = 0xFF080E1A)
 @Composable
 fun DnsProtectionCardPreviewLocked() {
     Box(Modifier.padding(16.dp)) {

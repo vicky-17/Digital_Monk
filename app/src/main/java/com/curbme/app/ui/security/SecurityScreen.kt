@@ -1,5 +1,6 @@
 package com.curbme.app.ui.security
 
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -8,39 +9,45 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.curbme.app.data.local.prefs.DataStoreManager
 import com.curbme.app.data.local.prefs.PrefsManager
+import com.curbme.app.ui.components.cards.ActionCard
+import com.curbme.app.ui.components.cards.AdvancedProtectionCard
+import com.curbme.app.ui.components.cards.DnsProtectionCard
 import com.curbme.app.ui.components.cards.ToggleCard
 import com.curbme.app.ui.components.dialogs.AntiUninstallPermissionDialog
 import com.curbme.app.ui.components.dialogs.ConfirmDialog
+import com.curbme.app.ui.components.dialogs.DeviceOwnerAccountErrorDialog
+import com.curbme.app.ui.components.dialogs.DeviceOwnerConfirmDialog
 import com.curbme.app.ui.components.dialogs.DeviceOwnerRequiredDialog
+import com.curbme.app.ui.components.dialogs.LockSettingsDialog
 import com.curbme.app.ui.components.dialogs.PinGateDialog
 import com.curbme.app.ui.components.dialogs.PreventVpnOverrideDialog
+import com.curbme.app.ui.components.dialogs.ShizukuGuideDialog
 import com.curbme.app.ui.components.dialogs.VpnKeepAliveDialog
 import com.curbme.app.ui.sidebar.formatRemainingTime
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.LaunchedEffect
-import com.curbme.app.ui.components.dialogs.LockSettingsDialog
-import android.os.SystemClock
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Security
-import androidx.compose.ui.draw.clip
-import com.curbme.app.ui.components.cards.ActionCard
-import com.curbme.app.ui.components.cards.DnsProtectionCard
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
-import androidx.compose.ui.draw.scale
-import androidx.core.graphics.createBitmap
+import com.curbme.app.ui.theme.CurbMeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -81,6 +88,28 @@ fun SecurityScreen(prefs: PrefsManager) {
     val showBankingAppPicker by viewModel.showBankingAppPicker.collectAsState()
     val bankingApps by viewModel.bankingApps.collectAsState()
     val isLoadingApps by viewModel.isLoadingApps.collectAsState()
+
+    // ── Shizuku & Advanced States ────────────────────────────────────────────
+    val isShizukuInstalled by viewModel.isShizukuInstalled.collectAsState()
+    val isShizukuAvailable by viewModel.isShizukuAvailable.collectAsState()
+    val hasShizukuPermission by viewModel.hasShizukuPermission.collectAsState()
+    val isSecureSettingsGranted by viewModel.isSecureSettingsGranted.collectAsState()
+    val isAutoHealEnabled by viewModel.isAutoHealEnabled.collectAsState()
+    val showShizukuGuideDialog by viewModel.showShizukuGuideDialog.collectAsState()
+    val showDeviceOwnerConfirmDialog by viewModel.showDeviceOwnerConfirmDialog.collectAsState()
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshShizukuState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // ── State ─────────────────────────────────────────────────────────────────
     var keepVpnAlive            by remember { mutableStateOf(settings.isKeepVpnAlive) }
@@ -173,6 +202,23 @@ fun SecurityScreen(prefs: PrefsManager) {
 
             SectionLabel("ANTI-UNINSTALL")
 
+            AdvancedProtectionCard(
+                isShizukuInstalled = isShizukuInstalled,
+                isShizukuAvailable = isShizukuAvailable,
+                hasShizukuPermission = hasShizukuPermission,
+                isSecureSettingsGranted = isSecureSettingsGranted,
+                isDeviceOwner = isDeviceOwner,
+                isAutoHealEnabled = isAutoHealEnabled,
+                onRequestShizukuPermission = { viewModel.requestShizukuPermission() },
+                onGrantSecureSettings = { viewModel.grantSecureSettings() },
+                onPromoteDeviceOwner = { viewModel.openDeviceOwnerConfirm() },
+                onOpenShizukuGuide = { viewModel.openShizukuGuide() },
+                onReinforceBackground = { viewModel.reinforceBackgroundExecution() },
+                onToggleAutoHeal = { viewModel.onToggleAutoHeal(it) }
+            )
+
+            Spacer(Modifier.height(16.dp))
+
             ToggleCard(
                 emoji    = "🛡️",
                 title    = "Anti-Uninstall Protection",
@@ -243,29 +289,31 @@ fun SecurityScreen(prefs: PrefsManager) {
 
             SectionLabel("PRIVATE DNS PROTECTION")
 
+            val canControlPrivateDns = viewModel.canControlPrivateDns
+
             DnsProtectionCard(
-                isEnabled = isPrivateDnsEnabled && isDeviceOwner,
+                isEnabled = isPrivateDnsEnabled && canControlPrivateDns,
                 selectedHostname = selectedHostname,
-                isSettingsLocked = isPrivateDnsLocked && isDeviceOwner,
+                isSettingsLocked = isPrivateDnsLocked && canControlPrivateDns,
                 isTimedLockActive = settings.isSettingsLocked,
                 lockUntil = settings.lockUntilTimestamp,
-                isDeviceOwner = isDeviceOwner,
+                isDeviceOwner = canControlPrivateDns,
                 onDnsToggle = { newValue ->
-                    if (!isDeviceOwner) {
+                    if (!canControlPrivateDns) {
                         viewModel.showDeviceOwnerRequiredDialog()
                     } else if (!settings.isSettingsLocked) {
                         viewModel.onPrivateDnsToggleRequested(newValue)
                     }
                 },
                 onHostClick = {
-                    if (!isDeviceOwner) {
+                    if (!canControlPrivateDns) {
                         viewModel.showDeviceOwnerRequiredDialog()
                     } else {
                         viewModel.onPrivateDnsToggleRequested(true)
                     }
                 },
                 onSettingsLockToggle = { newValue ->
-                    if (!isDeviceOwner) {
+                    if (!canControlPrivateDns) {
                         viewModel.showDeviceOwnerRequiredDialog()
                     } else if (settings.isSettingsLocked && !newValue) {
                         Toast.makeText(context, "Cannot disable shield while locked.", Toast.LENGTH_LONG).show()
@@ -320,6 +368,27 @@ fun SecurityScreen(prefs: PrefsManager) {
                 isLoading = isLoadingApps,
                 onAppSelected = { viewModel.confirmBankingBypass(it) },
                 onDismiss = { viewModel.dismissBankingAppPicker() }
+            )
+        }
+
+        if (showShizukuGuideDialog) {
+            ShizukuGuideDialog(
+                onDismiss = { viewModel.dismissShizukuGuide() }
+            )
+        }
+
+        if (showDeviceOwnerConfirmDialog) {
+            DeviceOwnerConfirmDialog(
+                onConfirm = { viewModel.promoteDeviceOwner() },
+                onDismiss = { viewModel.dismissDeviceOwnerConfirm() }
+            )
+        }
+
+        val deviceOwnerError by viewModel.deviceOwnerError.collectAsState()
+        if (deviceOwnerError != null) {
+            DeviceOwnerAccountErrorDialog(
+                errorMessage = deviceOwnerError!!,
+                onDismiss = { viewModel.dismissDeviceOwnerError() }
             )
         }
 
@@ -603,4 +672,34 @@ fun rememberAppIconPainter(drawable: android.graphics.drawable.Drawable?): andro
 @Composable
 private fun SectionLabel(label: String) {
     Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF334155), letterSpacing = 1.5.sp, modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp))
+}
+
+@Preview(name = "Security Screen", showBackground = true, backgroundColor = 0xFF080E1A, device = "spec:width=411dp,height=1600dp")
+@Composable
+fun SecurityScreenPreview() {
+    val context = LocalContext.current
+    CurbMeTheme {
+        SecurityScreen(prefs = remember { PrefsManager(context) })
+    }
+}
+
+@Preview(name = "Private DNS Card — Set to DNS", showBackground = true, backgroundColor = 0xFF080E1A)
+@Composable
+fun PrivateDnsCardSetToDnsPreview() {
+    CurbMeTheme {
+        Box(Modifier.padding(16.dp)) {
+            DnsProtectionCard(
+                isEnabled = true,
+                selectedHostname = "family.adguard-dns.com",
+                isSettingsLocked = true,
+                isTimedLockActive = false,
+                lockUntil = 0L,
+                isDeviceOwner = true,
+                onDnsToggle = {},
+                onHostClick = {},
+                onSettingsLockToggle = {},
+                onLockClick = {}
+            )
+        }
+    }
 }

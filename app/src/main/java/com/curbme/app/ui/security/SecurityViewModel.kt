@@ -28,22 +28,6 @@ class SecurityViewModel(
     private val _settings = MutableStateFlow(MonkSettings())
     val settings: StateFlow<MonkSettings> = _settings.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            dataStoreManager.settings.collect {
-                _settings.value = it
-                // Sync legacy-ish flows if needed, or just use settings.flow in UI
-                _isPermissionBlockEnabled.value = it.isPermissionBlockEnabled
-                _isPrivateDnsEnabled.value = it.isPrivateDnsEnabled
-                _selectedHostname.value = it.selectedPrivateDnsHostname
-                _hostnameList.value = it.customPrivateDnsHostnames
-                _isBankingBypassEnabled.value = it.isBankingBypassEnabled
-                _bankingBypassPackage.value = it.bankingBypassPackage
-                _isPrivateDnsLocked.value = it.isPrivateDnsLocked
-            }
-        }
-    }
-
     // ── Strict Permission Blocking State ──────────────────────────────────────
     private val _isPermissionBlockEnabled = MutableStateFlow(false)
     val isPermissionBlockEnabled: StateFlow<Boolean> = _isPermissionBlockEnabled.asStateFlow()
@@ -122,6 +106,103 @@ class SecurityViewModel(
     private val _showAntiUninstallPermissionDialog = MutableStateFlow(false)
     val showAntiUninstallPermissionDialog: StateFlow<Boolean> = _showAntiUninstallPermissionDialog.asStateFlow()
 
+    // ── Shizuku State Flows ──────────────────────────────────────────────────
+    private val _isShizukuInstalled = MutableStateFlow(com.curbme.app.core.utils.ShizukuManager.isShizukuInstalled(context))
+    val isShizukuInstalled: StateFlow<Boolean> = _isShizukuInstalled.asStateFlow()
+
+    private val _isShizukuAvailable = MutableStateFlow(com.curbme.app.core.utils.ShizukuManager.isShizukuAvailable())
+    val isShizukuAvailable: StateFlow<Boolean> = _isShizukuAvailable.asStateFlow()
+
+    private val _hasShizukuPermission = MutableStateFlow(com.curbme.app.core.utils.ShizukuManager.hasShizukuPermission())
+    val hasShizukuPermission: StateFlow<Boolean> = _hasShizukuPermission.asStateFlow()
+
+    private val _isSecureSettingsGranted = MutableStateFlow(
+        context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+    )
+    val isSecureSettingsGranted: StateFlow<Boolean> = _isSecureSettingsGranted.asStateFlow()
+
+    private val _showShizukuGuideDialog = MutableStateFlow(false)
+    val showShizukuGuideDialog: StateFlow<Boolean> = _showShizukuGuideDialog.asStateFlow()
+
+    private val _showDeviceOwnerConfirmDialog = MutableStateFlow(false)
+    val showDeviceOwnerConfirmDialog: StateFlow<Boolean> = _showDeviceOwnerConfirmDialog.asStateFlow()
+
+    private val _isAutoHealEnabled = MutableStateFlow(true)
+    val isAutoHealEnabled: StateFlow<Boolean> = _isAutoHealEnabled.asStateFlow()
+
+    init {
+        com.curbme.app.core.utils.ShizukuManager.initListeners {
+            refreshShizukuState()
+        }
+        refreshShizukuState()
+
+        viewModelScope.launch {
+            dataStoreManager.settings.collect {
+                _settings.value = it
+                _isPermissionBlockEnabled.value = it.isPermissionBlockEnabled
+                _isPrivateDnsEnabled.value = it.isPrivateDnsEnabled
+                _selectedHostname.value = it.selectedPrivateDnsHostname
+                _hostnameList.value = it.customPrivateDnsHostnames
+                _isBankingBypassEnabled.value = it.isBankingBypassEnabled
+                _bankingBypassPackage.value = it.bankingBypassPackage
+                _isPrivateDnsLocked.value = it.isPrivateDnsLocked
+                _isAutoHealEnabled.value = it.isAutoHealEnabled
+            }
+        }
+    }
+
+    fun refreshShizukuState() {
+        _isShizukuInstalled.value = com.curbme.app.core.utils.ShizukuManager.isShizukuInstalled(context)
+        _isShizukuAvailable.value = com.curbme.app.core.utils.ShizukuManager.isShizukuAvailable()
+        _hasShizukuPermission.value = com.curbme.app.core.utils.ShizukuManager.hasShizukuPermission()
+        _isSecureSettingsGranted.value = context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun requestShizukuPermission() {
+        com.curbme.app.core.utils.ShizukuManager.requestPermission()
+        refreshShizukuState()
+    }
+
+    fun grantSecureSettings() {
+        com.curbme.app.core.utils.ShizukuManager.grantSecureSettings(context) { success ->
+            refreshShizukuState()
+        }
+    }
+
+    private val _deviceOwnerError = MutableStateFlow<String?>(null)
+    val deviceOwnerError: StateFlow<String?> = _deviceOwnerError.asStateFlow()
+
+    fun promoteDeviceOwner() {
+        _deviceOwnerError.value = null
+        com.curbme.app.core.utils.ShizukuManager.setDeviceOwner(context) { success, msg ->
+            refreshShizukuState()
+            if (!success) {
+                _deviceOwnerError.value = msg
+            }
+        }
+    }
+
+    fun dismissDeviceOwnerError() {
+        _deviceOwnerError.value = null
+    }
+
+    fun reinforceBackgroundExecution() {
+        com.curbme.app.core.utils.ShizukuManager.reinforceBackgroundExecution(context)
+    }
+
+    fun onToggleAutoHeal(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStoreManager.setAutoHealEnabled(enabled)
+            _isAutoHealEnabled.value = enabled
+        }
+    }
+
+    fun openShizukuGuide() { _showShizukuGuideDialog.value = true }
+    fun dismissShizukuGuide() { _showShizukuGuideDialog.value = false }
+
+    fun openDeviceOwnerConfirm() { _showDeviceOwnerConfirmDialog.value = true }
+    fun dismissDeviceOwnerConfirm() { _showDeviceOwnerConfirmDialog.value = false }
+
     val isAccessibilityGranted: Boolean
         get() = PermissionHelper.isAccessibilityEnabled(context)
 
@@ -174,7 +255,7 @@ class SecurityViewModel(
      * - Turning OFF disables immediately, no prompt required.
      */
     fun onPrivateDnsToggleRequested(enabledRequested: Boolean) {
-        if (!isDeviceOwner) {
+        if (!canControlPrivateDns) {
             _showDeviceOwnerRequiredDialog.value = true
             return
         }
@@ -267,12 +348,19 @@ class SecurityViewModel(
         }
         dismissAddHostnameDialog()
     }
-    // ── Device Owner Check ────────────────────────────────────────────────────
+    // ── Device Owner & Control Checks ─────────────────────────────────────────
     val isDeviceOwner: Boolean
         get() {
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-            return dpm?.isDeviceOwnerApp(context.packageName) == true
+            return try {
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+                dpm?.isDeviceOwnerApp(context.packageName) == true
+            } catch (t: Throwable) {
+                false
+            }
         }
+
+    val canControlPrivateDns: Boolean
+        get() = isDeviceOwner || isSecureSettingsGranted.value
 
     // ── Methods for Permission Blocking ───────────────────────────────────────
     fun onToggleClicked(isChecked: Boolean) {
@@ -308,10 +396,10 @@ class SecurityViewModel(
      * never shows a stale state.
      */
     fun refreshPrivateDnsState() {
-        if (!isDeviceOwner) return
+        if (!canControlPrivateDns) return
         viewModelScope.launch(Dispatchers.IO) {
             val (systemEnabled, systemHost) = DevicePolicyHelper.getCurrentPrivateDnsState(context)
-            val lockActive = DevicePolicyHelper.isPrivateDnsSettingsLocked(context)
+            val lockActive = if (isDeviceOwner) DevicePolicyHelper.isPrivateDnsSettingsLocked(context) else _isPrivateDnsLocked.value
 
             _isPrivateDnsEnabled.value = systemEnabled
             dataStoreManager.setPrivateDnsEnabled(systemEnabled)
@@ -326,26 +414,17 @@ class SecurityViewModel(
         }
     }
 
-    /**
-     * Called when the parent flips "Lock Private DNS in Settings".
-     * Independent of enabling/disabling Private DNS itself — this only
-     * controls whether the child can reach the Private DNS screen in
-     * system Settings at all.
-     */
     fun onPrivateDnsLockToggleRequested(lockRequested: Boolean) {
-        if (!isDeviceOwner) {
+        if (!canControlPrivateDns) {
             _showDeviceOwnerRequiredDialog.value = true
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
-            val success = DevicePolicyHelper.setPrivateDnsUserRestriction(context, lockRequested)
-            if (success) {
-                _isPrivateDnsLocked.value = lockRequested
-                dataStoreManager.setPrivateDnsLocked(lockRequested)
-            } else {
-                _privateDnsError.value =
-                    "Could not update the Private DNS lock. Make sure CurbMe is set as Device Owner."
+            if (isDeviceOwner) {
+                DevicePolicyHelper.setPrivateDnsUserRestriction(context, lockRequested)
             }
+            _isPrivateDnsLocked.value = lockRequested
+            dataStoreManager.setPrivateDnsLocked(lockRequested)
         }
     }
 

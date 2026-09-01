@@ -174,6 +174,12 @@ class PrefsManager(context: Context) {
             prefs.edit { putBoolean("youtube_filter_enabled", value) }
         }
 
+    var isAutoHealEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_HEAL_ENABLED, true)
+        set(value) {
+            prefs.edit { putBoolean(KEY_AUTO_HEAL_ENABLED, value) }
+        }
+
     var lockUntil: Long
         get() = prefs.getLong(KEY_LOCK_UNTIL_TIMESTAMP, 0L)
         set(epochMs) {
@@ -383,6 +389,7 @@ class PrefsManager(context: Context) {
 
         private const val KEY_BANKING_BYPASS_ENABLED = "banking_bypass_enabled"
         private const val KEY_BANKING_BYPASS_PACKAGE = "banking_bypass_package"
+        private const val KEY_AUTO_HEAL_ENABLED = "auto_heal_enabled"
         private const val KEY_BANKING_BYPASS_START_TIME = "banking_bypass_start_time"
     }
 

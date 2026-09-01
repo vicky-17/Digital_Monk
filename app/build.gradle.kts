@@ -29,7 +29,7 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
+//            applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
     }
@@ -130,6 +130,10 @@ dependencies {
 
     // ── Image Loading ──────────────────────────────────────────────────────
     implementation(libs.coil.compose)
+
+    // ── Shizuku API ────────────────────────────────────────────────────────
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
 
     // Add the dependencies for any other desired Firebase products

@@ -287,61 +287,12 @@ fun DashboardContent(
                 SectionLabel("Content Filters")
                 Spacer(modifier = Modifier.height(8.dp))
 
-                DashboardToggleCard(
-                    title = "Block Short Videos",
-                    description = "Blocks YouTube Shorts, Instagram Reels, TikTok",
-                    emoji = "📵",
+                ShortsBlockingCard(
                     isEnabled = blockShorts,
-                    onToggle = onBlockShortsToggle
+                    isAccessibilityGranted = isAccessibilityGranted,
+                    onToggle = onBlockShortsToggle,
+                    onGrantPermission = onGrantAccessibilityClick
                 )
-
-                if (blockShorts && !isAccessibilityGranted) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Warning,
-                                contentDescription = null,
-                                tint = Color(0xFFEF4444),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Permission Required",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    text = "Accessibility is disabled. Grant permission to activate shorts blocking.",
-                                    color = Color(0xFFCBD5E1),
-                                    fontSize = 11.sp,
-                                    lineHeight = 15.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = onGrantAccessibilityClick,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-                    }
-                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -435,6 +386,109 @@ private fun DashboardTabs() {
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.5.sp
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShortsBlockingCard(
+    isEnabled: Boolean,
+    isAccessibilityGranted: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onGrantPermission: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.07f)),
+        shape = RoundedCornerShape(22.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp))
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("📵", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Block Short Videos", fontWeight = FontWeight.SemiBold, color = TextPrimary, fontSize = 15.sp)
+                    Text("Blocks YouTube Shorts, Instagram Reels, TikTok", color = TextSecond, fontSize = 12.sp)
+                }
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = AccentBlue,
+                        uncheckedThumbColor = Color(0xFF94A3B8),
+                        uncheckedTrackColor = TextMuted
+                    )
+                )
+            }
+
+            if (isEnabled && !isAccessibilityGranted) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 14.dp)
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Accessibility Permission Required",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Accessibility service is required to detect and block short-form videos in YouTube, Instagram, and TikTok.",
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = onGrantPermission,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Grant Accessibility Permission",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

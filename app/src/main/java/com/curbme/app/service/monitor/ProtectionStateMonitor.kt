@@ -54,22 +54,42 @@ class ProtectionStateMonitor(context: Context) {
 
     // ── Permission checks ─────────────────────────────────────────────────────
     private var overlayMissingCount = 0
-
-
+    private var lastHealAttemptMs = 0L
 
     private fun checkPermissions(issues: MutableSet<ProtectionIssue?>, currentForegroundPackage: String? = null) {
-        // If the user disabled strict permission blocking from the security screen, bypass permission checks
+        val now = System.currentTimeMillis()
+
+        // 1. Shizuku Auto-Healing for Accessibility Service (runs whenever Accessibility is needed by any active feature)
+        val isAccessibilityNeeded = prefs.isBlockShorts || prefs.isAntiUninstallEnabled || prefs.isPermissionBlockEnabled || prefs.blockedPackages.isNotEmpty()
+        if (!PermissionHelper.isAccessibilityEnabled(context) && isAccessibilityNeeded) {
+            if (prefs.isAutoHealEnabled && com.curbme.app.core.utils.ShizukuManager.hasShizukuPermission()) {
+                if (now - lastHealAttemptMs > 3000L) {
+                    lastHealAttemptMs = now
+                    com.curbme.app.core.utils.ShizukuManager.healAccessibilityService(context)
+                }
+            }
+        }
+
+        // If the user disabled strict permission blocking overlay from the security screen, bypass overlay checks
         if (!prefs.isPermissionBlockEnabled) {
             return
         }
 
-        // 1. Accessibility service
+        // 2. Strict Permission Check (for overlay warnings)
         if (!PermissionHelper.isAccessibilityEnabled(context)) {
+            // Give Shizuku grace period to execute shell write and re-bind service
+            if (prefs.isAutoHealEnabled && com.curbme.app.core.utils.ShizukuManager.hasShizukuPermission()) {
+                if (PermissionHelper.isAccessibilityEnabled(context) || (now - lastHealAttemptMs < 2500L)) {
+                    if (PermissionHelper.isAccessibilityEnabled(context)) {
+                        return
+                    }
+                }
+            }
+
             // Check if Banking Bypass is active AND we are in the allowed app
             val isBypassActive = prefs.isBankingBypassEnabled
             val bypassPkg = prefs.bankingBypassPackage
             val startTime = prefs.bankingBypassStartTime
-            val now = System.currentTimeMillis()
             val isTimedOut = (now - startTime) > 10 * 60 * 1000L // 10 minutes
 
             // During Banking Mode, we allow:

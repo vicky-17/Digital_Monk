@@ -128,6 +128,12 @@ class DataStoreManager(private val context: Context) {
         dataStore.updateData { it.copy(isPrivateDnsLocked = locked) }
     }
 
+    suspend fun setAutoHealEnabled(enabled: Boolean) {
+        dataStore.updateData { it.copy(isAutoHealEnabled = enabled) }
+        val prefs = PrefsManager(context)
+        prefs.isAutoHealEnabled = enabled
+    }
+
     suspend fun setBankingBypassEnabled(enabled: Boolean, pkg: String? = null) {
         val now = if (enabled) System.currentTimeMillis() else 0L
         dataStore.updateData { 

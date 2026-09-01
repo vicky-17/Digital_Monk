@@ -3,7 +3,9 @@ package com.curbme.app.core.deviceowner
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.annotation.RequiresApi
 
@@ -11,51 +13,57 @@ object DevicePolicyHelper {
     private const val TAG = "DevicePolicyHelper"
 
     /**
-     * Applies (or clears) the Private DNS configuration using the sanctioned
-     * DevicePolicyManager APIs for device owners. Settings.Global.putString()
-     * requires WRITE_SECURE_SETTINGS, which device owner status alone does NOT
-     * grant — that was the root cause of the previous silent failure.
-     *
-     * NOTE: setGlobalPrivateDnsModeSpecifiedHost() performs a blocking network
-     * connectivity check (RFC 7858 DoT handshake) to validate the host, so this
-     * MUST be called off the main thread. Callers are responsible for that.
+     * Applies (or clears) the Private DNS configuration.
+     * Tries DevicePolicyManager API first if app is Device Owner.
+     * Otherwise falls back to Settings.Global if WRITE_SECURE_SETTINGS permission is granted.
      */
     @RequiresApi(Build.VERSION_CODES.Q)
     fun applyPrivateDns(context: Context, enabled: Boolean, hostname: String): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
         val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
-        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
-            Log.w(TAG, "Cannot apply Private DNS: App is not Device Owner")
-            return false
+        // Path 1: Device Owner API
+        if (dpm != null && dpm.isDeviceOwnerApp(context.packageName)) {
+            try {
+                if (enabled && hostname.isNotBlank()) {
+                    val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, hostname)
+                    if (result == DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
+                        Log.i(TAG, "Private DNS set via Device Owner: $hostname")
+                        return true
+                    }
+                    Log.w(TAG, "Device Owner Private DNS failed (code=$result)")
+                } else {
+                    dpm.setGlobalPrivateDnsModeOpportunistic(adminComponent)
+                    Log.i(TAG, "Private DNS reset via Device Owner")
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Device Owner Private DNS failed: ${e.message}")
+            }
         }
 
-        return try {
-            if (enabled && hostname.isNotBlank()) {
-                when (val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, hostname)) {
-                    DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR -> {
-                        Log.i(TAG, "Private DNS set to hostname mode: $hostname")
-                        true
-                    }
-                    DevicePolicyManager.PRIVATE_DNS_SET_ERROR_HOST_NOT_SERVING -> {
-                        Log.w(TAG, "Host $hostname does not support DNS-over-TLS")
-                        false
-                    }
-                    DevicePolicyManager.PRIVATE_DNS_SET_ERROR_FAILURE_SETTING -> {
-                        Log.w(TAG, "General failure setting Private DNS (code=$result)")
-                        false
-                    }
-                    else -> false
+        // Path 2: WRITE_SECURE_SETTINGS API
+        val hasSecureSettings = context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+        if (hasSecureSettings) {
+            return try {
+                val cr = context.contentResolver
+                if (enabled && hostname.isNotBlank()) {
+                    Settings.Global.putString(cr, "private_dns_mode", "hostname")
+                    Settings.Global.putString(cr, "private_dns_specifier", hostname)
+                    Log.i(TAG, "Private DNS set via WRITE_SECURE_SETTINGS: $hostname")
+                } else {
+                    Settings.Global.putString(cr, "private_dns_mode", "opportunistic")
+                    Log.i(TAG, "Private DNS reset via WRITE_SECURE_SETTINGS")
                 }
-            } else {
-                dpm.setGlobalPrivateDnsModeOpportunistic(adminComponent)
-                Log.i(TAG, "Private DNS reset to opportunistic mode")
                 true
+            } catch (e: Exception) {
+                Log.e(TAG, "WRITE_SECURE_SETTINGS Private DNS failed: ${e.message}")
+                false
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to apply Private DNS configuration: ${e.message}")
-            false
         }
+
+        Log.w(TAG, "Cannot apply Private DNS: Neither Device Owner nor WRITE_SECURE_SETTINGS granted")
+        return false
     }
 
     /**
@@ -89,29 +97,18 @@ object DevicePolicyHelper {
 
     /**
      * Reads the actual current Private DNS state directly from the system,
-     * rather than trusting cached SharedPreferences. Used to re-sync UI state
-     * every time the Security screen is opened, since the mode can change
-     * outside the app.
+     * rather than trusting cached SharedPreferences.
      *
      * @return Pair(isEnabledViaHostname, hostnameOrEmpty).
      */
     @RequiresApi(Build.VERSION_CODES.Q)
     fun getCurrentPrivateDnsState(context: Context): Pair<Boolean, String> {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
-
-        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
-            return false to ""
-        }
-
         return try {
-            val mode = dpm.getGlobalPrivateDnsMode(adminComponent)
-            if (mode == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME) {
-                val host = dpm.getGlobalPrivateDnsHost(adminComponent) ?: ""
-                true to host
-            } else {
-                false to ""
-            }
+            val cr = context.contentResolver
+            val mode = Settings.Global.getString(cr, "private_dns_mode") ?: ""
+            val host = Settings.Global.getString(cr, "private_dns_specifier") ?: ""
+            val isEnabled = mode == "hostname" || mode == "provider_hostname"
+            isEnabled to (if (isEnabled) host else "")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read current Private DNS state: ${e.message}")
             false to ""
@@ -150,33 +147,23 @@ object DevicePolicyHelper {
         // Only enforce if both Enabled and Locked are true in our app
         if (!prefs.isPrivateDnsEnabled || !prefs.isPrivateDnsLocked) return
 
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
-        val adminComponent = android.content.ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
-
-        if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) return
-
         try {
-            val currentMode = dpm.getGlobalPrivateDnsMode(adminComponent)
-            val currentHost = dpm.getGlobalPrivateDnsHost(adminComponent) ?: ""
+            val cr = context.contentResolver
+            val currentMode = Settings.Global.getString(cr, "private_dns_mode") ?: ""
+            val currentHost = Settings.Global.getString(cr, "private_dns_specifier") ?: ""
             val desiredHost = prefs.selectedPrivateDnsHostname
 
-            val isWrongMode = currentMode != android.app.admin.DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME
+            val isWrongMode = currentMode != "hostname" && currentMode != "provider_hostname"
             val isWrongHost = currentHost != desiredHost
 
             if (isWrongMode || isWrongHost) {
-                android.util.Log.w("DevicePolicyHelper", "DNS mismatch detected! Mode=$currentMode, Host=$currentHost. Re-applying $desiredHost")
-
-                // Force the policy back
-                dpm.setGlobalPrivateDnsModeSpecifiedHost(adminComponent, desiredHost)
-
-                // Also ensure the standard user restriction is still set
-                dpm.addUserRestriction(adminComponent, android.os.UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+                Log.w(TAG, "DNS mismatch detected! Mode=$currentMode, Host=$currentHost. Re-applying $desiredHost")
+                applyPrivateDns(context, true, desiredHost)
             }
         } catch (e: Exception) {
-            android.util.Log.e("DevicePolicyHelper", "Failed to re-apply DNS policy: ${e.message}")
+            Log.e(TAG, "Failed to re-apply DNS policy: ${e.message}")
         }
     }
-
 
     /**
      * Prevents or allows uninstallation of a specific package.
@@ -220,7 +207,6 @@ object DevicePolicyHelper {
         }
     }
 
-
     /**
      * Prevents apps in the list from being disabled or force-stopped by the user.
      * Requires Device Owner.
@@ -255,5 +241,4 @@ object DevicePolicyHelper {
             emptyList()
         }
     }
-
 }
