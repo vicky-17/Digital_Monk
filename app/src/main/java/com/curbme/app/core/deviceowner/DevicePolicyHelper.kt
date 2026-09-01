@@ -137,31 +137,42 @@ object DevicePolicyHelper {
     }
 
     /**
-     * Checks the actual system Private DNS state. If the "Lock" is on in Prefs
-     * but the system is NOT set to the correct hostname, this method forces
-     * it back immediately.
+     * Checks the actual system Private DNS state. If Settings Shield (Private DNS Lock)
+     * is enabled or Private DNS is enabled in app, but system Private DNS is turned off,
+     * set to another mode, or set to a wrong/empty host, this method automatically detects
+     * the mismatch and forces it back to desiredHost immediately.
      */
     fun reapplyPolicyIfMismatched(context: Context) {
         val prefs = com.curbme.app.data.local.prefs.PrefsManager(context)
 
-        // Only enforce if both Enabled and Locked are true in our app
-        if (!prefs.isPrivateDnsEnabled || !prefs.isPrivateDnsLocked) return
+        // Enforce re-application when Settings Shield is ON (isPrivateDnsLocked)
+        // or when Private DNS is explicitly enabled in our app
+        if (!prefs.isPrivateDnsLocked && !prefs.isPrivateDnsEnabled) return
 
         try {
             val cr = context.contentResolver
             val currentMode = Settings.Global.getString(cr, "private_dns_mode") ?: ""
             val currentHost = Settings.Global.getString(cr, "private_dns_specifier") ?: ""
-            val desiredHost = prefs.selectedPrivateDnsHostname
+            var desiredHost = prefs.selectedPrivateDnsHostname
+            if (desiredHost.isBlank()) {
+                desiredHost = "dns.adguard.com"
+                prefs.selectedPrivateDnsHostname = desiredHost
+            }
 
-            val isWrongMode = currentMode != "hostname" && currentMode != "provider_hostname"
+            // Auto-detection logic:
+            // Check if private DNS is turned off, opportunistic, not in hostname/provider_hostname mode, or host is different/blank
+            val isWrongMode = currentMode.isBlank() || currentMode == "off" || currentMode == "opportunistic" || (currentMode != "hostname" && currentMode != "provider_hostname")
             val isWrongHost = currentHost != desiredHost
 
             if (isWrongMode || isWrongHost) {
                 Log.w(TAG, "DNS mismatch detected! Mode=$currentMode, Host=$currentHost. Re-applying $desiredHost")
-                applyPrivateDns(context, true, desiredHost)
+                val success = applyPrivateDns(context, true, desiredHost)
+                if (success) {
+                    prefs.isPrivateDnsEnabled = true
+                }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to re-apply DNS policy: ${e.message}")
+            Log.e(TAG, "Failed to re-apply DNS policy: ${e.message}", e)
         }
     }
 

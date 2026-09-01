@@ -60,18 +60,11 @@ class BootReceiver : BroadcastReceiver() {
 
         // 4. Re-apply Private DNS — this does a blocking connectivity check,
         //    so it MUST run off the main thread via goAsync().
-        if (prefs.isPrivateDnsEnabled) {
+        if (prefs.isPrivateDnsEnabled || prefs.isPrivateDnsLocked) {
             val pendingResult = goAsync()
             Thread {
                 try {
-                    val success = DevicePolicyHelper.applyPrivateDns(
-                        context,
-                        true,
-                        prefs.selectedPrivateDnsHostname
-                    )
-                    if (!success) {
-                        Log.w(TAG, "Private DNS re-apply on boot failed for host: ${prefs.selectedPrivateDnsHostname}")
-                    }
+                    DevicePolicyHelper.reapplyPolicyIfMismatched(context)
                 } finally {
                     pendingResult.finish()
                 }

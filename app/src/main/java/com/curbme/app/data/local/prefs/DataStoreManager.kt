@@ -101,7 +101,11 @@ class DataStoreManager(private val context: Context) {
     val settings: Flow<Settings> = dataStore.data
 
     suspend fun updateSettings(transform: (Settings) -> Settings) {
-        dataStore.updateData { transform(it) }
+        val updated = dataStore.updateData { transform(it) }
+        val prefs = PrefsManager(context)
+        prefs.isPrivateDnsEnabled = updated.isPrivateDnsEnabled
+        prefs.selectedPrivateDnsHostname = updated.selectedPrivateDnsHostname
+        prefs.isPrivateDnsLocked = updated.isPrivateDnsLocked
     }
 
     suspend fun updateAppBlocked(packageName: String, isBlocked: Boolean) {
@@ -118,14 +122,20 @@ class DataStoreManager(private val context: Context) {
 
     suspend fun setPrivateDnsEnabled(enabled: Boolean) {
         dataStore.updateData { it.copy(isPrivateDnsEnabled = enabled) }
+        val prefs = PrefsManager(context)
+        prefs.isPrivateDnsEnabled = enabled
     }
 
     suspend fun setSelectedPrivateDnsHostname(hostname: String) {
         dataStore.updateData { it.copy(selectedPrivateDnsHostname = hostname) }
+        val prefs = PrefsManager(context)
+        prefs.selectedPrivateDnsHostname = hostname
     }
 
     suspend fun setPrivateDnsLocked(locked: Boolean) {
         dataStore.updateData { it.copy(isPrivateDnsLocked = locked) }
+        val prefs = PrefsManager(context)
+        prefs.isPrivateDnsLocked = locked
     }
 
     suspend fun setAutoHealEnabled(enabled: Boolean) {

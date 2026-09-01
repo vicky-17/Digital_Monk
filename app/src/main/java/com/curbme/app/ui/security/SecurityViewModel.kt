@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import com.curbme.app.core.deviceowner.DevicePolicyHelper
 import com.curbme.app.core.utils.PermissionHelper
+import com.curbme.app.service.WatchdogService
 import com.curbme.app.service.accessibility.GuardianAccessibilityService
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -295,6 +296,7 @@ class SecurityViewModel(
                 }
                 _isPrivateDnsEnabled.value = true
                 _selectedHostname.value = hostname
+                WatchdogService.start(context)
             } else {
                 _privateDnsError.value =
                     "Could not enable Private DNS using \"$hostname\". " +
@@ -398,6 +400,9 @@ class SecurityViewModel(
     fun refreshPrivateDnsState() {
         if (!canControlPrivateDns) return
         viewModelScope.launch(Dispatchers.IO) {
+            // Re-apply Private DNS policy first if Settings Shield is enabled and DNS was tampered with
+            DevicePolicyHelper.reapplyPolicyIfMismatched(context)
+
             val (systemEnabled, systemHost) = DevicePolicyHelper.getCurrentPrivateDnsState(context)
             val lockActive = if (isDeviceOwner) DevicePolicyHelper.isPrivateDnsSettingsLocked(context) else _isPrivateDnsLocked.value
 
@@ -425,6 +430,10 @@ class SecurityViewModel(
             }
             _isPrivateDnsLocked.value = lockRequested
             dataStoreManager.setPrivateDnsLocked(lockRequested)
+            if (lockRequested) {
+                DevicePolicyHelper.reapplyPolicyIfMismatched(context)
+                WatchdogService.start(context)
+            }
         }
     }
 

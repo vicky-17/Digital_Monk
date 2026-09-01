@@ -63,13 +63,19 @@ class WatchdogService : Service() {
 
         dnsObserver = object : ContentObserver(null) {
             override fun onChange(selfChange: Boolean) {
+                DevicePolicyHelper.reapplyPolicyIfMismatched(this@WatchdogService)
                 protectionHandler.postDelayed({
                     DevicePolicyHelper.reapplyPolicyIfMismatched(this@WatchdogService)
-                }, 1000L)
+                }, 300L)
             }
         }
         contentResolver.registerContentObserver(
             Settings.Global.getUriFor("private_dns_mode"),
+            false,
+            dnsObserver!!
+        )
+        contentResolver.registerContentObserver(
+            Settings.Global.getUriFor("private_dns_specifier"),
             false,
             dnsObserver!!
         )
@@ -183,6 +189,7 @@ class WatchdogService : Service() {
     private fun performSettingsPoll() {
         settingsMonitor?.poll()
         if (settingsMonitor?.isSettingsOpen == true) {
+            DevicePolicyHelper.reapplyPolicyIfMismatched(this)
             val pkg = settingsMonitor?.currentSettingsPackage ?: return
             val isDangerous = settingsPageReader?.readAndRespond(this, pkg) ?: false
             if (!isDangerous && !SettingsBlockOverlayService.isFullOverlay && SettingsBlockOverlayService.isRunning) {
