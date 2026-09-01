@@ -226,7 +226,7 @@ class AppBlockEngineService : Service() {
 
     private fun applyBlock(rule: AppBlockRule) {
         val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-        val adminComponent = android.content.ComponentName(this, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = android.content.ComponentName(this, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
         val isDO = dpm.isDeviceOwnerApp(packageName)
 
         val reason = when (rule.planType) {

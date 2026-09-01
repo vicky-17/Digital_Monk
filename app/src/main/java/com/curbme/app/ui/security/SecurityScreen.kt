@@ -21,7 +21,9 @@ import androidx.compose.ui.unit.sp
 import com.curbme.app.data.local.prefs.DataStoreManager
 import com.curbme.app.data.local.prefs.PrefsManager
 import com.curbme.app.ui.components.cards.ToggleCard
+import com.curbme.app.ui.components.dialogs.AntiUninstallPermissionDialog
 import com.curbme.app.ui.components.dialogs.ConfirmDialog
+import com.curbme.app.ui.components.dialogs.DeviceOwnerRequiredDialog
 import com.curbme.app.ui.components.dialogs.PinGateDialog
 import com.curbme.app.ui.components.dialogs.PreventVpnOverrideDialog
 import com.curbme.app.ui.components.dialogs.VpnKeepAliveDialog
@@ -173,8 +175,8 @@ fun SecurityScreen(prefs: PrefsManager) {
 
             ToggleCard(
                 emoji    = "🛡️",
-                title    = "Prevent Settings Tampering",
-                subtitle = "Blocks access to Force Stop, Uninstall, and Device Admin pages for CurbMe.",
+                title    = "Anti-Uninstall Protection",
+                subtitle = "Uses Accessibility Service & Device Admin to block unauthorized uninstallation, Force Stop, and settings tampering for CurbMe.",
                 isEnabled = antiUninstallEnabled,
                 onToggle = { newValue ->
                     if (settings.isSettingsLocked) {
@@ -186,9 +188,8 @@ fun SecurityScreen(prefs: PrefsManager) {
                         return@ToggleCard
                     }
                     if (newValue) {
-                        antiUninstallEnabled = true
-                        scope.launch {
-                            dataStoreManager.updateSettings { it.copy(isAntiUninstallEnabled = true) }
+                        viewModel.onAntiUninstallToggleRequested(true) {
+                            antiUninstallEnabled = true
                         }
                     } else {
                         showAntiUninstallPinDialog = true
@@ -251,17 +252,21 @@ fun SecurityScreen(prefs: PrefsManager) {
                 isDeviceOwner = isDeviceOwner,
                 onDnsToggle = { newValue ->
                     if (!isDeviceOwner) {
-                        Toast.makeText(context, "Requires Device Owner.", Toast.LENGTH_LONG).show()
+                        viewModel.showDeviceOwnerRequiredDialog()
                     } else if (!settings.isSettingsLocked) {
                         viewModel.onPrivateDnsToggleRequested(newValue)
                     }
                 },
                 onHostClick = {
-                    viewModel.onPrivateDnsToggleRequested(true)
+                    if (!isDeviceOwner) {
+                        viewModel.showDeviceOwnerRequiredDialog()
+                    } else {
+                        viewModel.onPrivateDnsToggleRequested(true)
+                    }
                 },
                 onSettingsLockToggle = { newValue ->
                     if (!isDeviceOwner) {
-                        Toast.makeText(context, "Requires Device Owner.", Toast.LENGTH_LONG).show()
+                        viewModel.showDeviceOwnerRequiredDialog()
                     } else if (settings.isSettingsLocked && !newValue) {
                         Toast.makeText(context, "Cannot disable shield while locked.", Toast.LENGTH_LONG).show()
                     } else {
@@ -278,6 +283,30 @@ fun SecurityScreen(prefs: PrefsManager) {
             )
 
             Spacer(Modifier.height(40.dp))
+        }
+
+        val showDeviceOwnerRequiredDialog by viewModel.showDeviceOwnerRequiredDialog.collectAsState()
+        if (showDeviceOwnerRequiredDialog) {
+            DeviceOwnerRequiredDialog(
+                onDismiss = { viewModel.dismissDeviceOwnerRequiredDialog() }
+            )
+        }
+
+        val showAntiUninstallPermissionDialog by viewModel.showAntiUninstallPermissionDialog.collectAsState()
+        if (showAntiUninstallPermissionDialog) {
+            AntiUninstallPermissionDialog(
+                isAccessibilityGranted = viewModel.isAccessibilityGranted,
+                isDeviceAdminGranted = viewModel.isDeviceAdminGranted,
+                onDismiss = { viewModel.dismissAntiUninstallPermissionDialog() },
+                onPermissionGrantedCheck = {
+                    if (viewModel.isAccessibilityGranted && viewModel.isDeviceAdminGranted) {
+                        antiUninstallEnabled = true
+                        scope.launch {
+                            dataStoreManager.updateSettings { it.copy(isAntiUninstallEnabled = true) }
+                        }
+                    }
+                }
+            )
         }
 
         val showAppListDialog by viewModel.showAppListDialog.collectAsState()

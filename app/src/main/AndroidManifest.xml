@@ -191,7 +191,7 @@
 
         <!-- ── Device Admin (anti-uninstall protection) ──────────────────── -->
         <receiver
-            android:name=".receiver.MonkDeviceAdminReceiver"
+            android:name=".receiver.CurbMeDeviceAdminReceiver"
             android:exported="true"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data

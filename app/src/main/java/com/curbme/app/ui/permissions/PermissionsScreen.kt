@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -50,9 +51,17 @@ fun PermissionsScreen(
         viewModel.onVpnPermissionIntentHandled()
     }
 
+    val context = LocalContext.current
+
     LaunchedEffect(uiState.pendingDeviceAdminIntent) {
         uiState.pendingDeviceAdminIntent?.let { intent ->
-            deviceAdminLauncher.launch(intent)
+            try {
+                deviceAdminLauncher.launch(intent)
+            } catch (_: Exception) {
+                com.curbme.app.core.utils.PermissionHelper.openDeviceAdminSettings(context)
+            } finally {
+                viewModel.onDeviceAdminIntentHandled()
+            }
         }
     }
 

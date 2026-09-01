@@ -7,7 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import com.curbme.app.receiver.MonkDeviceAdminReceiver
+import com.curbme.app.receiver.CurbMeDeviceAdminReceiver
 
 /**
  * Why we made this file:
@@ -35,7 +35,7 @@ object AlwaysOnVpnHelper {
         try {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             // Updated to use the actual receiver class found in your project
-            val admin = ComponentName(context, MonkDeviceAdminReceiver::class.java)
+            val admin = ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
             val alwaysOnPackage = dpm.getAlwaysOnVpnPackage(admin)
             return context.getPackageName() == alwaysOnPackage
         } catch (e: Exception) {
@@ -53,7 +53,7 @@ object AlwaysOnVpnHelper {
 
         try {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val admin = ComponentName(context, MonkDeviceAdminReceiver::class.java)
+            val admin = ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
             dpm.setAlwaysOnVpnPackage(admin, context.getPackageName(), lockdown)
             Log.i(TAG, "✅ Always-on VPN enabled (lockdown=" + lockdown + ")")
             return true

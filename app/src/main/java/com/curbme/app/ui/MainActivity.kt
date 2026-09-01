@@ -60,7 +60,7 @@ import com.curbme.app.core.base.BaseActivity
 import com.curbme.app.core.utils.PermissionHelper
 import com.curbme.app.core.utils.PersistenceManager
 import com.curbme.app.data.local.prefs.PrefsManager
-import com.curbme.app.receiver.MonkDeviceAdminReceiver
+import com.curbme.app.receiver.CurbMeDeviceAdminReceiver
 import com.curbme.app.ui.auth.AuthViewModel
 import com.curbme.app.ui.auth.PinGateScreen
 import com.curbme.app.ui.auth.PinSetupActivity
@@ -185,7 +185,7 @@ class MainActivity : BaseActivity() {
             isAccessibilityOn = PermissionHelper.isAccessibilityEnabled(context),
             isBatteryExempt   = PersistenceManager.isBatteryOptimizationDisabled(context),
             canDrawOverlays   = PersistenceManager.canDrawOverlays(context),
-            isDeviceAdmin     = MonkDeviceAdminReceiver.isAdminActive(context),
+            isDeviceAdmin     = CurbMeDeviceAdminReceiver.isAdminActive(context),
             hasUsageStats     = PersistenceManager.hasUsageStatsPermission(context),
             hasNotification   = PermissionHelper.hasNotificationPermission(context),
             visitedAutostart  = sharedPrefs.getBoolean("visited_autostart", false),

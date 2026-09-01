@@ -22,7 +22,7 @@ import android.widget.Toast
  * "Monk" is the project identifier.
  * "DeviceAdminReceiver" is the specific Android framework component being extended.
  */
-class MonkDeviceAdminReceiver : DeviceAdminReceiver() {
+class CurbMeDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         Log.i(TAG, "✅ Device admin ENABLED — anti-uninstall active")
         Toast.makeText(
@@ -56,13 +56,13 @@ class MonkDeviceAdminReceiver : DeviceAdminReceiver() {
 
         // ── Static Helper Methods (Formerly Companion Object) ─────────────────────
         fun getComponentName(context: Context): ComponentName {
-            return ComponentName(context, MonkDeviceAdminReceiver::class.java)
+            return ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
         }
 
         fun isAdminActive(context: Context): Boolean {
             val dpm =
                 context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager?
-            return dpm != null && dpm.isAdminActive(getComponentName(context))
+            return dpm != null && (dpm.isAdminActive(getComponentName(context)) || dpm.isDeviceOwnerApp(context.packageName))
         }
 
         /**

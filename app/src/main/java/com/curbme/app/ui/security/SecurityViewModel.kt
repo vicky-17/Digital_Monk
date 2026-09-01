@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import com.curbme.app.core.deviceowner.DevicePolicyHelper
+import com.curbme.app.core.utils.PermissionHelper
 import com.curbme.app.service.accessibility.GuardianAccessibilityService
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -115,6 +116,43 @@ class SecurityViewModel(
     private val _showAppListDialog = MutableStateFlow(false)
     val showAppListDialog: StateFlow<Boolean> = _showAppListDialog.asStateFlow()
 
+    private val _showDeviceOwnerRequiredDialog = MutableStateFlow(false)
+    val showDeviceOwnerRequiredDialog: StateFlow<Boolean> = _showDeviceOwnerRequiredDialog.asStateFlow()
+
+    private val _showAntiUninstallPermissionDialog = MutableStateFlow(false)
+    val showAntiUninstallPermissionDialog: StateFlow<Boolean> = _showAntiUninstallPermissionDialog.asStateFlow()
+
+    val isAccessibilityGranted: Boolean
+        get() = PermissionHelper.isAccessibilityEnabled(context)
+
+    val isDeviceAdminGranted: Boolean
+        get() = PermissionHelper.isDeviceAdminActive(context)
+
+    fun showDeviceOwnerRequiredDialog() {
+        _showDeviceOwnerRequiredDialog.value = true
+    }
+
+    fun dismissDeviceOwnerRequiredDialog() {
+        _showDeviceOwnerRequiredDialog.value = false
+    }
+
+    fun dismissAntiUninstallPermissionDialog() {
+        _showAntiUninstallPermissionDialog.value = false
+    }
+
+    fun onAntiUninstallToggleRequested(requested: Boolean, onEnabled: () -> Unit) {
+        if (!requested) return
+
+        if (isAccessibilityGranted && isDeviceAdminGranted) {
+            viewModelScope.launch {
+                dataStoreManager.updateSettings { it.copy(isAntiUninstallEnabled = true) }
+            }
+            onEnabled()
+        } else {
+            _showAntiUninstallPermissionDialog.value = true
+        }
+    }
+
     // ── App Protection Confirmation ──────────────────────────────────────────
     data class AppConfirmData(
         val packageName: String,
@@ -136,6 +174,10 @@ class SecurityViewModel(
      * - Turning OFF disables immediately, no prompt required.
      */
     fun onPrivateDnsToggleRequested(enabledRequested: Boolean) {
+        if (!isDeviceOwner) {
+            _showDeviceOwnerRequiredDialog.value = true
+            return
+        }
         if (enabledRequested) {
             _showEnableHostnameDialog.value = true
         } else {
@@ -291,6 +333,10 @@ class SecurityViewModel(
      * system Settings at all.
      */
     fun onPrivateDnsLockToggleRequested(lockRequested: Boolean) {
+        if (!isDeviceOwner) {
+            _showDeviceOwnerRequiredDialog.value = true
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val success = DevicePolicyHelper.setPrivateDnsUserRestriction(context, lockRequested)
             if (success) {
@@ -309,6 +355,10 @@ class SecurityViewModel(
 
 
     fun onOpenAppListRequested() {
+        if (!isDeviceOwner) {
+            _showDeviceOwnerRequiredDialog.value = true
+            return
+        }
         _showAppListDialog.value = true
         fetchInstalledApps()
     }
@@ -343,6 +393,11 @@ class SecurityViewModel(
     }
 
     fun toggleUninstallProtection(packageName: String, blocked: Boolean) {
+        if (!isDeviceOwner) {
+            _showDeviceOwnerRequiredDialog.value = true
+            return
+        }
+
         // 1. Check if settings are locked when trying to turn OFF
         if (!blocked && settings.value.isSettingsLocked) {
             Toast.makeText(context, "Cannot disable protection while settings are locked.", Toast.LENGTH_SHORT).show()
@@ -361,6 +416,11 @@ class SecurityViewModel(
     }
 
     fun toggleForceStopProtection(packageName: String, blocked: Boolean) {
+        if (!isDeviceOwner) {
+            _showDeviceOwnerRequiredDialog.value = true
+            return
+        }
+
         if (!blocked && settings.value.isSettingsLocked) {
             Toast.makeText(context, "Cannot disable protection while settings are locked.", Toast.LENGTH_SHORT).show()
             return

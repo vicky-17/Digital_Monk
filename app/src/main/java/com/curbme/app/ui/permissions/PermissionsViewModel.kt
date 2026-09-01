@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
-import com.curbme.app.receiver.MonkDeviceAdminReceiver
+import com.curbme.app.receiver.CurbMeDeviceAdminReceiver
 import com.curbme.app.service.accessibility.AllowlistManager
 import com.curbme.app.service.vpn.DnsVpnService
 import com.curbme.app.data.local.prefs.PrefsManager
@@ -68,7 +68,7 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun buildDeviceAdminIntent(): Intent {
-        val adminComponent = ComponentName(context, MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
         return Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
             putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
             putExtra(

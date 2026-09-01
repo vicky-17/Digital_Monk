@@ -17,7 +17,7 @@ import android.os.Process
 import android.provider.Settings
 import android.text.TextUtils.SimpleStringSplitter
 import androidx.core.content.ContextCompat
-import com.curbme.app.receiver.MonkDeviceAdminReceiver
+import com.curbme.app.receiver.CurbMeDeviceAdminReceiver
 import com.curbme.app.service.accessibility.GuardianAccessibilityService
 
 /**
@@ -207,23 +207,66 @@ object PermissionHelper {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager?
         if (dpm == null) return false
 
-        val adminComponent = ComponentName(context, MonkDeviceAdminReceiver::class.java)
-        return dpm.isAdminActive(adminComponent)
+        val adminComponent = ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
+        return dpm.isAdminActive(adminComponent) || dpm.isDeviceOwnerApp(context.packageName)
     }
 
     /**
      * Triggers the full system device administration confirmation panel challenge.
+     * Includes multi-level fallbacks for various Android OEMs and Android 13+ Restricted Settings.
      */
     fun openDeviceAdminSettings(context: Context) {
-        val adminComponent = ComponentName(context, MonkDeviceAdminReceiver::class.java)
-        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-        intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-        intent.putExtra(
-            DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-            "Activate to prevent CurbMe from being uninstalled without parental permission."
-        )
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        val adminComponent = ComponentName(context, CurbMeDeviceAdminReceiver::class.java)
+        val primaryIntent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+            putExtra(
+                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                "Activate to prevent CurbMe from being uninstalled without parental permission."
+            )
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val deviceAdminListIntent = Intent("android.settings.DEVICE_ADMIN_SETTINGS").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val securitySettingsIntent = Intent(Settings.ACTION_SECURITY_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:" + context.packageName)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        // 1. Primary: ACTION_ADD_DEVICE_ADMIN
+        try {
+            if (primaryIntent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(primaryIntent)
+                return
+            }
+        } catch (_: Exception) {}
+
+        // 2. Fallback 1: System Device Admin List Screen
+        try {
+            if (deviceAdminListIntent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(deviceAdminListIntent)
+                return
+            }
+        } catch (_: Exception) {}
+
+        // 3. Fallback 2: Security Settings
+        try {
+            if (securitySettingsIntent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(securitySettingsIntent)
+                return
+            }
+        } catch (_: Exception) {}
+
+        // 4. Fallback 3: App Info Details Page
+        try {
+            context.startActivity(appDetailsIntent)
+        } catch (_: Exception) {}
     }
 
     /* =========================================================================

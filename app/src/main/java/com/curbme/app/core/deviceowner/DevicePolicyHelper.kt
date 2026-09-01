@@ -23,7 +23,7 @@ object DevicePolicyHelper {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun applyPrivateDns(context: Context, enabled: Boolean, hostname: String): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
             Log.w(TAG, "Cannot apply Private DNS: App is not Device Owner")
@@ -65,7 +65,7 @@ object DevicePolicyHelper {
      */
     fun setPrivateDnsUserRestriction(context: Context, restrict: Boolean): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
             Log.w(TAG, "Cannot set Private DNS restriction: App is not Device Owner")
@@ -98,7 +98,7 @@ object DevicePolicyHelper {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun getCurrentPrivateDnsState(context: Context): Pair<Boolean, String> {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
             return false to ""
@@ -124,7 +124,7 @@ object DevicePolicyHelper {
      */
     fun isPrivateDnsSettingsLocked(context: Context): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
             return false
@@ -151,7 +151,7 @@ object DevicePolicyHelper {
         if (!prefs.isPrivateDnsEnabled || !prefs.isPrivateDnsLocked) return
 
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
-        val adminComponent = android.content.ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = android.content.ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) return
 
@@ -184,7 +184,7 @@ object DevicePolicyHelper {
      */
     fun setUninstallBlocked(context: Context, packageName: String, blocked: Boolean): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
             Log.w(TAG, "Cannot set uninstall block: App is not Device Owner")
@@ -206,7 +206,7 @@ object DevicePolicyHelper {
      */
     fun isUninstallBlocked(context: Context, packageName: String): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
-        val adminComponent = ComponentName(context, com.curbme.app.receiver.MonkDeviceAdminReceiver::class.java)
+        val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
 
         if (dpm == null || !dpm.isDeviceOwnerApp(context.packageName)) {
             return false
