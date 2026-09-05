@@ -1,5 +1,7 @@
 package com.curbme.app.data.local.prefs
 
+import com.curbme.app.data.models.ReelPlanConfig
+
 /**
  * Data class representing all app settings, used by DataStore for reactive,
  * process-safe updates.
@@ -49,7 +51,9 @@ data class Settings(
     val lastVpnHeartbeatType: String? = "",
     val lastVpnHeartbeatTimestamp: Long = 0L,
     val isAppUsageTrackingEnabled: Boolean = true,
-    val isAutoHealEnabled: Boolean = true
+    val isAutoHealEnabled: Boolean = true,
+    val isWebsiteUsageTrackingEnabled: Boolean = true,
+    val reelPlanConfig: ReelPlanConfig = ReelPlanConfig()
 ) {
     val isSettingsLocked: Boolean
         get() {

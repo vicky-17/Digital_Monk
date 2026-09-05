@@ -41,6 +41,12 @@ class PrefsManager(context: Context) {
             prefs.edit { putBoolean(KEY_BLOCK_SHORTS, value) }
         }
 
+    var isReelCounterOverlayOn: Boolean
+        get() = prefs.getBoolean("key_reel_counter_overlay", true)
+        set(value) {
+            prefs.edit { putBoolean("key_reel_counter_overlay", value) }
+        }
+
     var isBlockPorn: Boolean
         get() = prefs.getBoolean(KEY_BLOCK_PORN, false)
         set(value) {

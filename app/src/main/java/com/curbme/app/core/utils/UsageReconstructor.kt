@@ -8,9 +8,16 @@ import android.content.pm.PackageManager
 import java.util.Calendar
 
 /**
- * Reconstructs per-package foreground screen time for a calendar day (or any
- * window) from the raw UsageEvents stream, aiming to match Digital
- * Wellbeing's numbers within a small margin.
+ * 🚨 CRITICAL & HIGH-PRECISION USAGE RECONSTRUCTION ENGINE 🚨
+ * DO NOT MODIFY OR REFACTOR THIS RECONSTRUCTION ALGORITHM.
+ * 
+ * Reconstructs per-package foreground screen time for a calendar day (or any window)
+ * from the raw UsageEvents stream, achieving Digital Wellbeing precision.
+ * 
+ * Key Pillars of Precision:
+ * 1. Instance-ID Tracking: Uses UsageEvents.Event.getInstanceId() to prevent multi-activity stale event clobbering.
+ * 2. Day-Boundary Clipping: Clips future timestamps to System.currentTimeMillis() for today.
+ * 3. Lockscreen Exclusions: Treats SCREEN_NON_INTERACTIVE and SCREEN_INTERACTIVE correctly so screen-off or lockscreen glances do not count.
  */
 object UsageReconstructor {
 

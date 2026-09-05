@@ -1,5 +1,6 @@
 package com.curbme.app.ui.dashboard
 
+import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
 import android.os.SystemClock
@@ -12,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -30,22 +32,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.curbme.app.core.utils.NtpFetcher
 import com.curbme.app.core.utils.PermissionHelper
+import com.curbme.app.core.utils.TimeUtils
+import com.curbme.app.data.local.db.AppDatabase
+import com.curbme.app.data.local.db.entity.WebsiteStatsEntity
+import com.curbme.app.data.local.prefs.DataStoreManager
 import com.curbme.app.data.local.prefs.PrefsManager
+import com.curbme.app.data.local.prefs.Settings
 import com.curbme.app.data.models.AppUsageInfo
 import com.curbme.app.service.vpn.DnsVpnService
 import com.curbme.app.ui.components.common.SectionLabel
 import com.curbme.app.ui.sidebar.formatRemainingTime
 import com.curbme.app.ui.components.dialogs.AlwaysOnVpnDialog
 import com.curbme.app.ui.components.dialogs.LockSettingsDialog
+import com.curbme.app.ui.components.dialogs.ShortsConfigBottomSheet
+import com.curbme.app.ui.contentfilter.WebsiteUsageCard
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 private val BgDeep      = Color(0xFF04040c)
 private val AccentBlue  = Color(0xFF3B82F6)
-private val AccentPink  = Color(0xFFEC4899)
-private val AccentTeal  = Color(0xFF14B8A6)
+private val AccentPink  = Color(0xFF38BDF8) // App main sky blue accent
 private val AccentViolet = Color(0xFF8B5CF6)
 private val TextPrimary = Color(0xFFf5f6fb)
 private val TextSecond  = Color(0xFFf5f6fb).copy(alpha = 0.62f)
@@ -60,11 +73,17 @@ fun DashboardScreen(
     usageViewModel: UsageViewModel
 ) {
     val context = LocalContext.current
+    val currentSettings by DataStoreManager(context).settings.collectAsState(initial = Settings())
+
     var safeSearchEnabled by remember { mutableStateOf(prefs.isSafeSearchEnabled) }
     var blockShorts by remember { mutableStateOf(prefs.isBlockShorts) }
+    var isOverlayOn by remember { mutableStateOf(prefs.isReelCounterOverlayOn) }
+    var reelCount by remember { mutableStateOf(0) }
+    var reelTimeMs by remember { mutableStateOf(0L) }
     var showLockDialog by remember { mutableStateOf(false) }
     var showAlwaysOnDialog by remember { mutableStateOf(false) }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var showShortsConfigSheet by remember { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     var isAccessibilityGranted by remember {
@@ -85,14 +104,25 @@ fun DashboardScreen(
 
     val isLocked = remember(refreshKey) { PrefsManager(context).isSettingsLocked }
     
+    var trackedWebsites by remember { mutableStateOf<List<WebsiteStatsEntity>>(emptyList()) }
+    var isWebTrackingEnabled by remember { mutableStateOf(true) }
+
     LaunchedEffect(refreshKey) {
         usageViewModel.refreshStats()
+        try {
+            val db = AppDatabase.getDatabase(context)
+            val today = TimeUtils.todayKey()
+            reelCount = db.reelStatsDao().getCount(today) ?: 0
+            val stats = db.reelUsageStatsDao().getForDate(today)
+            reelTimeMs = stats.sumOf { it.totalTime }
+            trackedWebsites = db.websiteStatsDao().getForDate(today)
+        } catch (_: Exception) {}
     }
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
+        if (result.resultCode == Activity.RESULT_OK) {
             safeSearchEnabled = true
             prefs.isSafeSearchEnabled = true
             context.startService(Intent(context, DnsVpnService::class.java))
@@ -144,14 +174,38 @@ fun DashboardScreen(
             }
             blockShorts = newVal
             prefs.isBlockShorts = newVal
+            CoroutineScope(Dispatchers.IO).launch {
+                DataStoreManager(context).setBlockShorts(newVal)
+            }
         },
         onGrantAccessibilityClick = {
             PermissionHelper.openAccessibilityServiceScreen(context)
         },
+        onConfigureShortsClick = {
+            showShortsConfigSheet = true
+        },
         onLockClick = { if (!isLocked) showLockDialog = true },
         onLockdownVpnClick = { showAlwaysOnDialog = true },
         onNavigateToUsageStats = onNavigateToUsageStats,
-        usageViewModel = usageViewModel
+        usageViewModel = usageViewModel,
+        reelCount = reelCount,
+        reelTimeMs = reelTimeMs,
+        isOverlayEnabled = isOverlayOn,
+        trackedWebsites = trackedWebsites,
+        isWebTrackingEnabled = isWebTrackingEnabled,
+        onToggleWebTracking = { newValue ->
+            isWebTrackingEnabled = newValue
+            val dataStore = DataStoreManager(context)
+            CoroutineScope(Dispatchers.IO).launch {
+                dataStore.updateSettings { it.copy(isWebsiteUsageTrackingEnabled = newValue) }
+            }
+        },
+        onBlockDomain = { domain ->
+            val dataStore = DataStoreManager(context)
+            CoroutineScope(Dispatchers.IO).launch {
+                dataStore.updateSettings { it.copy(blockedWebsites = it.blockedWebsites + domain) }
+            }
+        }
     )
 
     if (showAccessibilityDialog) {
@@ -176,7 +230,7 @@ fun DashboardScreen(
                 showLockDialog = false
                 onRefresh()
                 Thread {
-                    val ntpTime = com.curbme.app.core.utils.NtpFetcher.fetchNtpTime()
+                    val ntpTime = NtpFetcher.fetchNtpTime()
                     if (ntpTime > 0) {
                         val offset = ntpTime - System.currentTimeMillis()
                         prefsLocal.lockNtpOffset = offset
@@ -185,6 +239,22 @@ fun DashboardScreen(
                 }.start()
             },
             onDismiss = { showLockDialog = false }
+        )
+    }
+
+    if (showShortsConfigSheet) {
+        ShortsConfigBottomSheet(
+            initialConfig = currentSettings.reelPlanConfig,
+            isOverlayOn = isOverlayOn,
+            onSave = { newConfig, newOverlay ->
+                showShortsConfigSheet = false
+                isOverlayOn = newOverlay
+                prefs.isReelCounterOverlayOn = newOverlay
+                CoroutineScope(Dispatchers.IO).launch {
+                    DataStoreManager(context).updateSettings { it.copy(reelPlanConfig = newConfig) }
+                }
+            },
+            onDismiss = { showShortsConfigSheet = false }
         )
     }
 
@@ -214,10 +284,18 @@ fun DashboardContent(
     onSafeSearchToggle: (Boolean) -> Unit,
     onBlockShortsToggle: (Boolean) -> Unit,
     onGrantAccessibilityClick: () -> Unit = {},
+    onConfigureShortsClick: () -> Unit = {},
     onLockClick: () -> Unit,
     onLockdownVpnClick: () -> Unit,
     onNavigateToUsageStats: () -> Unit,
     usageViewModel: UsageViewModel? = null,
+    reelCount: Int = 0,
+    reelTimeMs: Long = 0L,
+    isOverlayEnabled: Boolean = true,
+    trackedWebsites: List<WebsiteStatsEntity> = emptyList(),
+    isWebTrackingEnabled: Boolean = true,
+    onToggleWebTracking: (Boolean) -> Unit = {},
+    onBlockDomain: (String) -> Unit = {},
     // Preview-only parameters
     previewUsageStats: List<AppUsageInfo>? = null,
     previewComparisonPercent: Int = 0
@@ -252,6 +330,8 @@ fun DashboardContent(
             )
     ) {
 
+        var selectedDashboardTab by remember { mutableIntStateOf(0) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -262,7 +342,10 @@ fun DashboardContent(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp, top = 0.dp)
         ) {
-            DashboardTabs()
+            DashboardTabs(
+                selectedTab = selectedDashboardTab,
+                onTabSelected = { selectedDashboardTab = it }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -270,6 +353,7 @@ fun DashboardContent(
                 if (usageViewModel != null) {
                     UsageStatsSection(
                         viewModel = usageViewModel,
+                        selectedTab = selectedDashboardTab,
                         onOpenAllStats = onNavigateToUsageStats
                     )
                 } else if (previewUsageStats != null) {
@@ -287,11 +371,24 @@ fun DashboardContent(
                 SectionLabel("Content Filters")
                 Spacer(modifier = Modifier.height(8.dp))
 
-                ShortsBlockingCard(
+                ShortsGuardCard(
                     isEnabled = blockShorts,
                     isAccessibilityGranted = isAccessibilityGranted,
+                    reelCount = reelCount,
+                    reelTimeMs = reelTimeMs,
+                    isOverlayEnabled = isOverlayEnabled,
                     onToggle = onBlockShortsToggle,
+                    onConfigureClick = onConfigureShortsClick,
                     onGrantPermission = onGrantAccessibilityClick
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                WebsiteUsageCard(
+                    websites = trackedWebsites,
+                    isTrackingEnabled = isWebTrackingEnabled,
+                    onToggleTracking = onToggleWebTracking,
+                    onBlockDomain = onBlockDomain
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -329,9 +426,11 @@ fun DashboardContent(
 }
 
 @Composable
-private fun DashboardTabs() {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Daily", "Weekly", "Monthly")
+private fun DashboardTabs(
+    selectedTab: Int = 0,
+    onTabSelected: (Int) -> Unit = {}
+) {
+    val tabs = listOf("Daily", "Weekly")
     
     Box(
         modifier = Modifier
@@ -344,7 +443,7 @@ private fun DashboardTabs() {
             .padding(5.dp)
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val pillWidth = maxWidth / 3
+            val pillWidth = maxWidth / tabs.size
             val pillOffset by animateDpAsState(
                 targetValue = pillWidth * selectedTab,
                 animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow),
@@ -377,7 +476,7 @@ private fun DashboardTabs() {
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clickable { selectedTab = index },
+                        .clickable { onTabSelected(index) },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -393,10 +492,14 @@ private fun DashboardTabs() {
 }
 
 @Composable
-private fun ShortsBlockingCard(
+private fun ShortsGuardCard(
     isEnabled: Boolean,
     isAccessibilityGranted: Boolean,
+    reelCount: Int,
+    reelTimeMs: Long,
+    isOverlayEnabled: Boolean,
     onToggle: (Boolean) -> Unit,
+    onConfigureClick: () -> Unit,
     onGrantPermission: () -> Unit
 ) {
     Card(
@@ -406,16 +509,24 @@ private fun ShortsBlockingCard(
             .fillMaxWidth()
             .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(22.dp))
     ) {
-        Column {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("📵", fontSize = 24.sp)
-                Spacer(modifier = Modifier.width(14.dp))
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(AccentPink.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("📵", fontSize = 20.sp)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Block Short Videos", fontWeight = FontWeight.SemiBold, color = TextPrimary, fontSize = 15.sp)
-                    Text("Blocks YouTube Shorts, Instagram Reels, TikTok", color = TextSecond, fontSize = 12.sp)
+                    Text("Block Short Videos", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 15.sp)
+                    Text("YouTube Shorts, Reels, TikTok & more", color = TextSecond, fontSize = 11.sp)
                 }
                 Switch(
                     checked = isEnabled,
@@ -429,64 +540,111 @@ private fun ShortsBlockingCard(
                 )
             }
 
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Stats row (clickable to configure)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onConfigureClick),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(14.dp))
+                        .padding(12.dp)
+                ) {
+                    Text("Reels Scrolled Today", color = TextSecond, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "$reelCount",
+                        color = TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(14.dp))
+                        .padding(12.dp)
+                ) {
+                    Text("Time on Reels Today", color = TextSecond, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = TimeUtils.formatDurationShort(reelTimeMs),
+                        color = AccentViolet,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Configure Button Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .clickable(onClick = onConfigureClick)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("⚙️", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Configure Apps & Limits",
+                        color = AccentPink,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = if (isOverlayEnabled) "Badge Overlay: ON →" else "Badge Overlay: OFF →",
+                    color = TextSecond,
+                    fontSize = 11.sp
+                )
+            }
+
             if (isEnabled && !isAccessibilityGranted) {
-                Box(
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = 14.dp)
+                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(14.dp))
                 ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Warning,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEF4444),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Accessibility Permission Required",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 13.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Accessibility service is required to detect and block short-form videos in YouTube, Instagram, and TikTok.",
-                                color = Color(0xFFCBD5E1),
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = onGrantPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Grant Accessibility Permission",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Accessibility Permission Required", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Required to detect and block short video feeds.", color = Color(0xFFCBD5E1), fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onGrantPermission,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Grant Permission", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
@@ -549,7 +707,7 @@ private fun AccessibilityPromptDialog(
     onGrantClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),

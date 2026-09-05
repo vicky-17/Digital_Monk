@@ -12,10 +12,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.curbme.app.core.utils.TimeUtils
+import com.curbme.app.data.local.db.AppDatabase
+import com.curbme.app.data.local.db.entity.WebsiteStatsEntity
+import com.curbme.app.data.local.prefs.DataStoreManager
 import com.curbme.app.data.local.prefs.PrefsManager
 import com.curbme.app.ui.components.cards.ToggleCard
 import com.curbme.app.ui.components.common.SectionLabel
 import com.curbme.app.ui.components.dialogs.PinDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * ContentFilterScreen remains in Kotlin.
@@ -100,7 +106,39 @@ fun ContentFilterScreen() {
                 }
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            var isWebTrackingEnabled by remember { mutableStateOf(true) }
+            var trackedWebsites by remember { mutableStateOf<List<WebsiteStatsEntity>>(emptyList()) }
+            val scope = rememberCoroutineScope()
+
+            LaunchedEffect(Unit) {
+                try {
+                    val db = AppDatabase.getDatabase(context)
+                    val today = TimeUtils.todayKey()
+                    trackedWebsites = db.websiteStatsDao().getForDate(today)
+                } catch (_: Exception) {}
+            }
+
+            WebsiteUsageCard(
+                websites = trackedWebsites,
+                isTrackingEnabled = isWebTrackingEnabled,
+                onToggleTracking = { newValue ->
+                    isWebTrackingEnabled = newValue
+                    val dataStore = DataStoreManager(context)
+                    scope.launch(Dispatchers.IO) {
+                        dataStore.updateSettings { it.copy(isWebsiteUsageTrackingEnabled = newValue) }
+                    }
+                },
+                onBlockDomain = { domain ->
+                    val dataStore = DataStoreManager(context)
+                    scope.launch(Dispatchers.IO) {
+                        dataStore.updateSettings { it.copy(blockedWebsites = it.blockedWebsites + domain) }
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Helpful tip for the parent
             Card(

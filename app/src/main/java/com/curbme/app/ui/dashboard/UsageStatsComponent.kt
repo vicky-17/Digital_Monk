@@ -29,7 +29,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.curbme.app.data.models.AppUsageInfo
+import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
 // ── Liquid Glass Palette ──────────────────────────────────────────────────────
 private val GlassBg       = Color(0xFFf5f6fb).copy(alpha = 0.07f)
@@ -179,16 +181,40 @@ fun ShimmerUsageSkeleton() {
 @Composable
 fun UsageStatsSection(
     viewModel: UsageViewModel,
+    selectedTab: Int = 0, // 0 = Daily, 1 = Weekly
     onOpenAllStats: () -> Unit
 ) {
-    val usageStats by viewModel.todayStats.collectAsState()
+    val todayStats by viewModel.todayStats.collectAsState()
+    val weeklyStats by viewModel.weeklyTotalStats.collectAsState()
+    val weeklyDateRangeLabel by viewModel.weeklyDateRangeLabel.collectAsState()
+    val weeklyTotalTimeMs by viewModel.weeklyTotalTimeMs.collectAsState()
+
     val comparisonPercent by viewModel.comparisonPercent.collectAsState()
     val isPermissionGranted by viewModel.isPermissionGranted.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val context = LocalContext.current
 
+    val activeStats = if (selectedTab == 1) weeklyStats else todayStats
+    val dateLabel = if (selectedTab == 1) {
+        if (weeklyDateRangeLabel.isNotBlank()) weeklyDateRangeLabel else "This Week"
+    } else {
+        val todayStr = remember { SimpleDateFormat("d MMM", Locale.getDefault()).format(Date()) }
+        "Today, $todayStr"
+    }
+    val subtitleText = if (selectedTab == 1) {
+        val avgMs = (weeklyTotalTimeMs / 7).coerceAtLeast(0L)
+        "Avg: ${formatDuration(avgMs)} / day"
+    } else {
+        val isLess = comparisonPercent <= 0
+        "${if (isLess) "↓" else "↑"} ${abs(comparisonPercent)}% vs yesterday"
+    }
+
     UsageStatsSection(
-        usageStats = usageStats,
+        usageStats = activeStats,
+        headerTitle = if (selectedTab == 1) "Weekly Screen Time" else "Total Screen Time",
+        dateRangeLabel = dateLabel,
+        subtitleText = subtitleText,
+        isLessVsPrevious = comparisonPercent <= 0,
         comparisonPercent = comparisonPercent,
         isPermissionGranted = isPermissionGranted,
         isLoading = isLoading,
@@ -204,11 +230,15 @@ fun UsageStatsSection(
 @Composable
 fun UsageStatsSection(
     usageStats: List<AppUsageInfo>,
-    comparisonPercent: Int,
-    isPermissionGranted: Boolean,
+    headerTitle: String = "Total Screen Time",
+    dateRangeLabel: String = "",
+    subtitleText: String = "",
+    isLessVsPrevious: Boolean = true,
+    comparisonPercent: Int = 0,
+    isPermissionGranted: Boolean = true,
     isLoading: Boolean = false,
-    onOpenAllStats: () -> Unit,
-    onGrantPermission: () -> Unit
+    onOpenAllStats: () -> Unit = {},
+    onGrantPermission: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Card(
@@ -229,7 +259,13 @@ fun UsageStatsSection(
                         ShimmerUsageSkeleton()
                     } else {
                         Column {
-                            UsageHero(usageStats, comparisonPercent)
+                            UsageHero(
+                                stats = usageStats,
+                                headerTitle = headerTitle,
+                                dateRangeLabel = dateRangeLabel,
+                                subtitleText = subtitleText,
+                                isLessVsPrevious = isLessVsPrevious
+                            )
 
                             Spacer(Modifier.height(24.dp))
 
@@ -247,7 +283,13 @@ fun UsageStatsSection(
 }
 
 @Composable
-private fun UsageHero(stats: List<AppUsageInfo>, comparison: Int) {
+private fun UsageHero(
+    stats: List<AppUsageInfo>,
+    headerTitle: String,
+    dateRangeLabel: String,
+    subtitleText: String,
+    isLessVsPrevious: Boolean
+) {
     // Exclude Launcher time from the total to match Digital Wellbeing's "Screen Time"
     val activeStats = stats.filter { it.category != "Launcher" }
     val totalTimeMs = activeStats.sumOf { it.usageTimeMs }
@@ -276,7 +318,7 @@ private fun UsageHero(stats: List<AppUsageInfo>, comparison: Int) {
             // ── Inner Solid Circle (Strictly contains all text safely) ──
             Box(
                 modifier = Modifier
-                    .fillMaxSize(0.74f) // Increased size to prevent text hitting the rings
+                    .fillMaxSize(0.74f)
                     .clip(CircleShape)
                     .background(Color(0xFF04040c))
                     .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
@@ -287,29 +329,29 @@ private fun UsageHero(stats: List<AppUsageInfo>, comparison: Int) {
                     verticalArrangement = Arrangement.Center,
                     modifier = Modifier.padding(horizontal = 4.dp)
                 ) {
-                    Text("Total screen time", color = TextSecond, fontSize = 8.5.sp, fontWeight = FontWeight.Medium)
+                    Text(headerTitle, color = TextSecond, fontSize = 8.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                     Text(
                         text = formatDuration(totalTimeMs),
                         color = TextPrimary,
-                        fontSize = 20.sp,
+                        fontSize = 19.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
-                    val todayStr = remember {
-                        java.text.SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date())
+                    if (dateRangeLabel.isNotBlank()) {
+                        Text(dateRangeLabel, color = TextSecond, fontSize = 8.sp, textAlign = TextAlign.Center, maxLines = 1)
                     }
-                    Text("Today, $todayStr", color = TextSecond, fontSize = 8.5.sp)
 
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
 
-                    val isLess = comparison <= 0
-                    Text(
-                        text = "${if (isLess) "↓" else "↑"} ${kotlin.math.abs(comparison)}% vs yesterday",
-                        color = if (isLess) AccentGreen else Color(0xFFF87171),
-                        fontSize = 9.5.sp, // Scaled to ensure full text fits inside
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
-                    )
+                    if (subtitleText.isNotBlank()) {
+                        Text(
+                            text = subtitleText,
+                            color = if (isLessVsPrevious) AccentGreen else Color(0xFFF87171),
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }

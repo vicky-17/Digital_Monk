@@ -5,6 +5,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.curbme.app.data.local.prefs.Settings
+import com.curbme.app.service.monitor.CooldownManager
 import com.curbme.app.service.monitor.SettingsAppMonitor
 
 class AppBlockHandler(
@@ -31,6 +32,11 @@ class AppBlockHandler(
         }
 
         if (!settings.blockedPackages.contains(packageName)) return
+
+        if (CooldownManager.isCoolingDown(packageName)) {
+            Log.d(TAG, "App $packageName is in temporary pass cooldown → ALLOW")
+            return
+        }
 
         Log.d(TAG, "🚫 Blocked: " + packageName + " → HOME")
         actionPerformer.performAction(AccessibilityService.GLOBAL_ACTION_HOME)

@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.*
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.curbme.app.core.utils.DataWiper
 import com.curbme.app.data.local.db.AppDatabase
 import com.curbme.app.ui.components.cards.ActionCard
 import com.curbme.app.ui.components.common.SectionLabel
@@ -95,14 +97,14 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-//            ActionCard(
-//                title = "Emergency Data Wipe",
-//                description = "Clears the database if the app is crashing. Requires app restart.",
-//                icon = Icons.Rounded.DeleteForever,
-//                onClick = {
-//                    showWipeConfirm = true
-//                }
-//            )
+            ActionCard(
+                title = "Emergency Data Wipe",
+                description = "Clears the database if the app is crashing. Requires app restart.",
+                icon = Icons.Rounded.DeleteForever,
+                onClick = {
+                    showWipeConfirm = true
+                }
+            )
         }
     }
 
@@ -114,8 +116,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        AppDatabase.deleteDatabaseFile(context)
-                        exitProcess(status = 0)
+                        DataWiper.wipeAllDataAndExit(context)
                     }
                 ) {
                     Text("Wipe & Close", color = Color.Red)

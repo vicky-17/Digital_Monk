@@ -15,9 +15,8 @@ object DevicePolicyHelper {
     /**
      * Applies (or clears) the Private DNS configuration.
      * Tries DevicePolicyManager API first if app is Device Owner.
-     * Otherwise falls back to Settings.Global if WRITE_SECURE_SETTINGS permission is granted.
+     * Otherwise, falls back to Settings.Global if WRITE_SECURE_SETTINGS permission is granted.
      */
-    @RequiresApi(Build.VERSION_CODES.Q)
     fun applyPrivateDns(context: Context, enabled: Boolean, hostname: String): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
         val adminComponent = ComponentName(context, com.curbme.app.receiver.CurbMeDeviceAdminReceiver::class.java)
@@ -145,9 +144,11 @@ object DevicePolicyHelper {
     fun reapplyPolicyIfMismatched(context: Context) {
         val prefs = com.curbme.app.data.local.prefs.PrefsManager(context)
 
-        // Enforce re-application when Settings Shield is ON (isPrivateDnsLocked)
-        // or when Private DNS is explicitly enabled in our app
-        if (!prefs.isPrivateDnsLocked && !prefs.isPrivateDnsEnabled) return
+        // Rule 1: If Private DNS is turned OFF in CurbMe, do NOT force re-apply,
+        if (!prefs.isPrivateDnsEnabled) return
+
+        if (!prefs.isPrivateDnsLocked) return
+
 
         try {
             val cr = context.contentResolver
@@ -167,9 +168,9 @@ object DevicePolicyHelper {
             if (isWrongMode || isWrongHost) {
                 Log.w(TAG, "DNS mismatch detected! Mode=$currentMode, Host=$currentHost. Re-applying $desiredHost")
                 val success = applyPrivateDns(context, true, desiredHost)
-                if (success) {
-                    prefs.isPrivateDnsEnabled = true
-                }
+//                if (success) {
+//                    prefs.isPrivateDnsEnabled = true
+//                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to re-apply DNS policy: ${e.message}", e)

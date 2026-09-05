@@ -17,6 +17,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.curbme.app.core.utils.PermissionHelper
+import com.curbme.app.service.monitor.CooldownManager
 import com.curbme.app.ui.theme.CurbMeTheme
 
 class BlockedPageActivity : ComponentActivity() {
@@ -210,8 +211,16 @@ class BlockedPageActivity : ComponentActivity() {
         // Primary = "Fix Permission" (opens exact settings page), only if action exists
         // Secondary = "Go to Home Screen"
         val actions = buildList {
+            val blockedPkg = intent.getStringExtra("launch_package") ?: ""
+            if (blockedPkg.isNotBlank()) {
+                add(GateAction("Grant 10-Min Pass", isPrimary = true) {
+                    CooldownManager.grantCooldown(blockedPkg, 10 * 60 * 1000L)
+                    intentionalExit = true
+                    finish()
+                })
+            }
             if (settingsAction != ACTION_NONE) {
-                add(GateAction(fixLabel, isPrimary = true) {
+                add(GateAction(fixLabel, isPrimary = blockedPkg.isBlank()) {
                     if (settingsAction == ACTION_REQUEST_VPN_PERMISSION){
                         requestVpnPermission()
                     }

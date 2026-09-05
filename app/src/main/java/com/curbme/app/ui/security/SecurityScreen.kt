@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Security
@@ -30,6 +31,8 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.curbme.app.core.utils.MonochromeHelper
+import com.curbme.app.core.utils.OemAutostartHelper
 import com.curbme.app.data.local.prefs.DataStoreManager
 import com.curbme.app.data.local.prefs.PrefsManager
 import com.curbme.app.ui.components.cards.ActionCard
@@ -215,6 +218,39 @@ fun SecurityScreen(prefs: PrefsManager) {
                 onOpenShizukuGuide = { viewModel.openShizukuGuide() },
                 onReinforceBackground = { viewModel.reinforceBackgroundExecution() },
                 onToggleAutoHeal = { viewModel.onToggleAutoHeal(it) }
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            ActionCard(
+                title = "OEM Autostart & Battery Whitelist",
+                description = "Prevent aggressive OEM battery killers (Xiaomi, Samsung, Vivo, Oppo, OnePlus) from stopping CurbMe.",
+                icon = Icons.Rounded.Security,
+                onClick = {
+                    val launched = OemAutostartHelper.launchAutostartSettings(context)
+                    if (!launched) {
+                        Toast.makeText(context, "OEM autostart settings not required or not found on this device.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            var isGrayscaleEnabled by remember { mutableStateOf(false) }
+
+            ToggleCard(
+                emoji    = "🎨",
+                title    = "Dopamine Detox Grayscale Mode",
+                subtitle = "Turns screen black & white on short-video apps to remove visual stimulation.",
+                isEnabled = isGrayscaleEnabled,
+                onToggle = { newValue ->
+                    isGrayscaleEnabled = newValue
+                    if (newValue) {
+                        MonochromeHelper.enableMonochrome(context)
+                    } else {
+                        MonochromeHelper.disableMonochrome(context)
+                    }
+                }
             )
 
             Spacer(Modifier.height(16.dp))

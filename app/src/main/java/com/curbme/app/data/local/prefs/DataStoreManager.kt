@@ -138,6 +138,10 @@ class DataStoreManager(private val context: Context) {
         prefs.isPrivateDnsLocked = locked
     }
 
+    suspend fun resetAllSettings() {
+        dataStore.updateData { Settings() }
+    }
+
     suspend fun setAutoHealEnabled(enabled: Boolean) {
         dataStore.updateData { it.copy(isAutoHealEnabled = enabled) }
         val prefs = PrefsManager(context)
@@ -161,5 +165,11 @@ class DataStoreManager(private val context: Context) {
 
     suspend fun setSafeSearchEnabled(enabled: Boolean) {
         dataStore.updateData { it.copy(isSafeSearchEnabled = enabled) }
+    }
+
+    suspend fun setBlockShorts(enabled: Boolean) {
+        dataStore.updateData { it.copy(isBlockShorts = enabled) }
+        val prefs = PrefsManager(context)
+        prefs.isBlockShorts = enabled
     }
 }

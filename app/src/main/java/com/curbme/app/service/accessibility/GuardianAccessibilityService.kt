@@ -7,9 +7,13 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.curbme.app.core.utils.UiDumper.dumpAll
 import com.curbme.app.data.local.prefs.DataStoreManager
+import com.curbme.app.data.local.prefs.PrefsManager
 import com.curbme.app.data.local.prefs.Settings
+import com.curbme.app.service.accessibility.detectors.ShortsDetector
 import com.curbme.app.service.accessibility.handlers.AppBlockHandler
+import com.curbme.app.service.accessibility.handlers.ReelCounterHandler
 import com.curbme.app.service.accessibility.handlers.ShortsBlockHandler
+import com.curbme.app.service.accessibility.handlers.WebsiteUsageHandler
 import com.curbme.app.service.monitor.AppUsageTracker
 import com.curbme.app.ui.block.AppBlockOverlayManager
 import kotlinx.coroutines.*
@@ -25,6 +29,7 @@ class GuardianAccessibilityService : AccessibilityService() {
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val eventChannel = Channel<AccessibilityEventInfo>(Channel.CONFLATED)
+    private var shortsRecheckJob: Job? = null
     
     private data class AccessibilityEventInfo(
         val eventType: Int,
@@ -34,6 +39,8 @@ class GuardianAccessibilityService : AccessibilityService() {
     private var shortsBlockHandler: ShortsBlockHandler? = null
     private var appBlockHandler: AppBlockHandler? = null
     private var appUsageTracker: AppUsageTracker? = null
+    private var reelCounterHandler: ReelCounterHandler? = null
+    private var websiteUsageHandler: WebsiteUsageHandler? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -61,6 +68,8 @@ class GuardianAccessibilityService : AccessibilityService() {
             ShortsBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
         appBlockHandler = AppBlockHandler(
             AppBlockHandler.ActionPerformer { action: Int -> this.performGlobalAction(action) })
+        reelCounterHandler = ReelCounterHandler(this)
+        websiteUsageHandler = WebsiteUsageHandler(this)
         
         // Use existing tracker if available, otherwise setup a new one
         appUsageTracker = AppUsageTracker.instance ?: AppUsageTracker().apply { setup(this@GuardianAccessibilityService) }
@@ -79,7 +88,11 @@ class GuardianAccessibilityService : AccessibilityService() {
         super.onDestroy()
         serviceScope.cancel()
         appUsageTracker?.onDestroy()
+        reelCounterHandler?.onDestroy()
+        websiteUsageHandler?.onDestroy()
         appUsageTracker = null
+        reelCounterHandler = null
+        websiteUsageHandler = null
         instance = null
         Log.w(TAG, "Service destroyed")
     }
@@ -128,22 +141,65 @@ class GuardianAccessibilityService : AccessibilityService() {
 
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             && eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            && eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED
+            && eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
         ) {
             return
         }
 
-        if (pkgSeq == null) return
-        val pkg = pkgSeq
+        if (pkgSeq == null) {
+            Log.d(TAG, "processEvent: pkgSeq is null, eventType=$eventType")
+            return
+        }
+        val pkg = pkgSeq.toString()
         if (pkg == packageName) return
 
         val root = rootInActiveWindow
         if (root != null) {
-            if (DEBUG_DUMP_UI && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (DEBUG_DUMP_UI) {
                 dumpAll(root, pkg)
             }
 
-            shortsBlockHandler?.handle(root, pkg, settings)
+            checkAndRecheckShorts(root, pkg)
+            reelCounterHandler?.handleEvent(root, pkg)
+            websiteUsageHandler?.handleEvent(root, pkg, settings.isWebsiteUsageTrackingEnabled)
             appBlockHandler?.handle(root, pkg, eventType, settings)
+        } else {
+            Log.d(TAG, "processEvent: rootInActiveWindow is null for $pkg")
+            checkAndRecheckShorts(null, pkg)
+            reelCounterHandler?.handleEvent(null, pkg)
+            websiteUsageHandler?.handleEvent(null, pkg, settings.isWebsiteUsageTrackingEnabled)
+        }
+    }
+
+    private fun checkAndRecheckShorts(root: AccessibilityNodeInfo?, pkg: String) {
+        val isBlocked = shortsBlockHandler?.handle(root, pkg, settings, this) ?: false
+        if (isBlocked) {
+            shortsRecheckJob?.cancel()
+            shortsRecheckJob = null
+            return
+        }
+
+        // If not blocked right away, but the target app is a short-video app (e.g. YouTube, Instagram),
+        // schedule delayed re-checks to catch nodes as soon as layout/inflation completes.
+        if (ShortsDetector.TARGET_SHORT_VIDEO_PACKAGES.contains(pkg)) {
+            val isBlockShortsEnabled = settings.isBlockShorts || PrefsManager(this).isBlockShorts
+            if (isBlockShortsEnabled) {
+                shortsRecheckJob?.cancel()
+                shortsRecheckJob = serviceScope.launch {
+                    delay(200)
+                    if (isActive) {
+                        val freshRoot = rootInActiveWindow
+                        val blockedAt200 = shortsBlockHandler?.handle(freshRoot, pkg, settings, this@GuardianAccessibilityService) ?: false
+                        if (blockedAt200) return@launch
+                    }
+                    delay(300)
+                    if (isActive) {
+                        val freshRoot = rootInActiveWindow
+                        shortsBlockHandler?.handle(freshRoot, pkg, settings, this@GuardianAccessibilityService)
+                    }
+                }
+            }
         }
     }
 

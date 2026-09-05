@@ -5,22 +5,39 @@ import androidx.room.Database
 import androidx.room.Room.databaseBuilder
 import androidx.room.RoomDatabase
 import com.curbme.app.data.local.db.dao.AppBlockDao
+import com.curbme.app.data.local.db.dao.AppGroupDao
 import com.curbme.app.data.local.db.dao.AppUsageDao
+import com.curbme.app.data.local.db.dao.ReelStatsDao
+import com.curbme.app.data.local.db.dao.ReelUsageStatsDao
 import com.curbme.app.data.local.db.dao.UsageLogDao
+import com.curbme.app.data.local.db.dao.WebsiteStatsDao
 import com.curbme.app.data.local.db.entity.AppBlockRule
+import com.curbme.app.data.local.db.entity.AppGroupEntity
 import com.curbme.app.data.local.db.entity.AppUsageEntity
+import com.curbme.app.data.local.db.entity.ReelStatsEntity
+import com.curbme.app.data.local.db.entity.ReelUsageStatsEntity
 import com.curbme.app.data.local.db.entity.UsageLogEntity
+import com.curbme.app.data.local.db.entity.WebsiteStatsEntity
 import com.curbme.app.service.vpn.heartbeat.VpnHeartBeatDao
 import com.curbme.app.service.vpn.heartbeat.VpnHeartBeatEntity
 import kotlin.concurrent.Volatile
 
 /**
  * The sole Database class for the application.
- * All entities (UsageLogs, Heartbeats, etc.) are registered here.
+ * All entities (UsageLogs, Heartbeats, ReelStats, WebsiteStats, AppGroups, etc.) are registered here.
  */
 @Database(
-    entities = [UsageLogEntity::class, VpnHeartBeatEntity::class, AppBlockRule::class, AppUsageEntity::class],
-    version = 4,
+    entities = [
+        UsageLogEntity::class,
+        VpnHeartBeatEntity::class,
+        AppBlockRule::class,
+        AppUsageEntity::class,
+        ReelStatsEntity::class,
+        ReelUsageStatsEntity::class,
+        WebsiteStatsEntity::class,
+        AppGroupEntity::class
+    ],
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,6 +45,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appUsageDao(): AppUsageDao
     abstract fun vpnHeartBeatDao(): VpnHeartBeatDao
     abstract fun appBlockDao(): AppBlockDao
+    abstract fun reelStatsDao(): ReelStatsDao
+    abstract fun reelUsageStatsDao(): ReelUsageStatsDao
+    abstract fun websiteStatsDao(): WebsiteStatsDao
+    abstract fun appGroupDao(): AppGroupDao
 
     companion object {
         @Volatile

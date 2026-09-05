@@ -51,6 +51,14 @@ class WatchdogService : Service() {
     private val settingsHandler = Handler(Looper.getMainLooper())
     private val protectionHandler = Handler(Looper.getMainLooper())
 
+    private var privateDnsObserver: com.curbme.app.service.monitor.PrivateDnsObserver? = null
+
+    private var connectivityManager: android.net.ConnectivityManager? = null
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
+
+
+
     override fun onCreate() {
         super.onCreate()
         dataStoreManager = DataStoreManager(this)
@@ -61,24 +69,28 @@ class WatchdogService : Service() {
             }
         }
 
-        dnsObserver = object : ContentObserver(null) {
-            override fun onChange(selfChange: Boolean) {
+        privateDnsObserver = com.curbme.app.service.monitor.PrivateDnsObserver(this)
+        privateDnsObserver?.register()
+
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+
+        networkCallback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onLinkPropertiesChanged(network: android.net.Network, linkProperties: android.net.LinkProperties) {
+                super.onLinkPropertiesChanged(network, linkProperties)
+                // Called by Android OS instantly when network DNS or link properties change!
                 DevicePolicyHelper.reapplyPolicyIfMismatched(this@WatchdogService)
-                protectionHandler.postDelayed({
-                    DevicePolicyHelper.reapplyPolicyIfMismatched(this@WatchdogService)
-                }, 300L)
             }
         }
-        contentResolver.registerContentObserver(
-            Settings.Global.getUriFor("private_dns_mode"),
-            false,
-            dnsObserver!!
-        )
-        contentResolver.registerContentObserver(
-            Settings.Global.getUriFor("private_dns_specifier"),
-            false,
-            dnsObserver!!
-        )
+
+        try {
+            networkCallback?.let {
+                connectivityManager?.registerDefaultNetworkCallback(it)
+            }
+        } catch (e: Exception) {
+            Log.e("WatchdogService", "Failed to register NetworkCallback: ${e.message}")
+        }
+
+
 
         settingsMonitor = SettingsAppMonitor(this, object : SettingsAppMonitor.SettingsStateListener {
             override fun onSettingsOpened(packageName: String?) {
@@ -132,7 +144,19 @@ class WatchdogService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        dnsObserver?.let { contentResolver.unregisterContentObserver(it) }
+
+        // Unregister PrivateDnsObserver
+        privateDnsObserver?.unregister()
+
+        // Unregister NetworkCallback
+        try {
+            networkCallback?.let {
+                connectivityManager?.unregisterNetworkCallback(it)
+            }
+        } catch (e: Exception) {
+            Log.e("WatchdogService", "Failed to unregister NetworkCallback: ${e.message}")
+        }
+
         serviceJob.cancel()
         healthHandler.removeCallbacksAndMessages(null)
         settingsHandler.removeCallbacksAndMessages(null)
@@ -151,6 +175,7 @@ class WatchdogService : Service() {
     private fun performHealthCheck() {
         AllowlistManager.getInstance().pruneExpired()
         startAppBlockEngine(this)
+        AccessibilitySelfHealer.healIfNeeded(this)
 
         if (settings.isSafeSearchEnabled && !DnsVpnService.isServiceRunning) {
             try {
@@ -189,7 +214,6 @@ class WatchdogService : Service() {
     private fun performSettingsPoll() {
         settingsMonitor?.poll()
         if (settingsMonitor?.isSettingsOpen == true) {
-            DevicePolicyHelper.reapplyPolicyIfMismatched(this)
             val pkg = settingsMonitor?.currentSettingsPackage ?: return
             val isDangerous = settingsPageReader?.readAndRespond(this, pkg) ?: false
             if (!isDangerous && !SettingsBlockOverlayService.isFullOverlay && SettingsBlockOverlayService.isRunning) {
